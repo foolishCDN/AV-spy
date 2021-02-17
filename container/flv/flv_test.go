@@ -12,13 +12,21 @@ func TestMuxerAndDemuxer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open flv file err, %v", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	tmpFile, err := os.Create("test_copy.flv")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tmpFile.Close()
+	defer func() {
+		if err := tmpFile.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	demuxer := new(Demuxer)
 	muxer := new(Muxer)
@@ -40,7 +48,7 @@ func TestMuxerAndDemuxer(t *testing.T) {
 				break
 			}
 		}
-		_, d, _ := tag.Info()
+		d := tag.Len()
 		if d > maxSize {
 			maxSize = d
 		}
@@ -56,9 +64,12 @@ func TestParser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open flv file err, %v", err)
 	}
-	defer r.Close()
+	defer func() {
+		if err := r.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	parser := NewParser(func(tag TagI) error {
-		fmt.Println(tag.Info())
 		return nil
 	})
 	for {

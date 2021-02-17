@@ -8,9 +8,8 @@ import (
 )
 
 type Writer struct {
-	w      io.Writer
-	u32    [4]byte
-	chunks []Chunk
+	w   io.Writer
+	u32 [4]byte
 }
 
 func NewWriter(w io.Writer) *Writer {

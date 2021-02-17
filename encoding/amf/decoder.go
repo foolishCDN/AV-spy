@@ -54,6 +54,9 @@ func (decoder *Decoder) DecodeBatch(r io.Reader) (res []interface{}, err error) 
 		}
 		res = append(res, v)
 	}
+	if err == io.EOF {
+		return res, nil
+	}
 	return res, err
 }
 
@@ -438,7 +441,7 @@ func (decoder *Decoder) readArrayAMF3(r io.Reader) (*ArrayTypeAMF3, error) {
 		return nil, errors.New("readArrayAMF3: wrong type")
 	}
 	array := &ArrayTypeAMF3{
-		Associative: make(map[string]interface{}, 0),
+		Associative: make(map[string]interface{}),
 		Dense:       make([]interface{}, index),
 	}
 	for {

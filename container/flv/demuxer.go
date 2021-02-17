@@ -82,7 +82,7 @@ func (demuxer *Demuxer) parseTag(size uint32, tagHeader []byte, data []byte) (Ta
 
 	tag, err := demuxer.demux(
 		tagHeader[0]&0xa0,                      // filter
-		tagHeader[0]&0x1f,                      // tag type
+		TagType(tagHeader[0]&0x1f),             // tag type
 		utils.BigEndianUint24(tagHeader[8:11]), // streamID
 		(uint32(tagHeader[4])<<16)|uint32(tagHeader[5])<<8|uint32(tagHeader[6])|uint32(tagHeader[7])<<24, // timestamp
 		data[:size], // data
@@ -93,7 +93,7 @@ func (demuxer *Demuxer) parseTag(size uint32, tagHeader []byte, data []byte) (Ta
 	return tag, nil
 }
 
-func (demuxer *Demuxer) demux(filter, tagType byte, streamID, timestamp uint32, data []byte) (t TagI, err error) {
+func (demuxer *Demuxer) demux(filter byte, tagType TagType, streamID, timestamp uint32, data []byte) (t TagI, err error) {
 	switch tagType {
 	case TagAudio:
 		t = demuxer.audioTag(data, streamID, timestamp)
@@ -111,16 +111,16 @@ func (demuxer *Demuxer) audioTag(data []byte, streamID, timestamp uint32) *Audio
 	a := &AudioTag{}
 	a.PTS = timestamp
 	a.StreamID = streamID
-	a.SoundFormat = (data[0] >> 4) & 0x0f
-	a.SampleRate = (data[0] >> 2) & 0x03
-	a.BitPerSample = (data[0] >> 1) & 0x01
-	a.Channels = data[0] & 0x01
+	a.SoundFormat = SoundFormat((data[0] >> 4) & 0x0f)
+	a.SampleRate = SoundRate((data[0] >> 2) & 0x03)
+	a.BitPerSample = SoundSize((data[0] >> 1) & 0x01)
+	a.Channels = SoundType(data[0] & 0x01)
 
-	if a.SoundFormat == AudioAAC {
+	if a.SoundFormat == AAC {
 		a.PacketType = data[1]
-		a.Data = data[2:]
+		a.Bytes = data[2:]
 	} else {
-		a.Data = data[1:]
+		a.Bytes = data[1:]
 	}
 	return a
 }
@@ -128,19 +128,20 @@ func (demuxer *Demuxer) audioTag(data []byte, streamID, timestamp uint32) *Audio
 func (demuxer *Demuxer) videoTag(data []byte, streamID, timestamp uint32) *VideoTag {
 	v := &VideoTag{}
 	v.DTS = timestamp
-	v.FrameType = (data[0] >> 4) & 0xf
-	v.CodecID = data[0] & 0xf
+	v.StreamID = streamID
+	v.FrameType = Format((data[0] >> 4) & 0xf)
+	v.CodecID = CodecID(data[0] & 0xf)
 
 	switch v.CodecID {
-	case VideoH264, VideoH265:
+	case H264, H265:
 		v.PacketType = data[1]
 		compositionTime := utils.BigEndianUint24(data[2:5])
 		compositionTime = (compositionTime + 0xFF800000) ^ 0xFF800000
 		v.PTS = uint32(int64(v.DTS) + int64(int32(compositionTime)))
-		v.Data = data[5:]
+		v.Bytes = data[5:]
 
 	default:
-		v.Data = data[1:]
+		v.Bytes = data[1:]
 	}
 	return v
 }
@@ -149,6 +150,6 @@ func (demuxer *Demuxer) scriptTag(data []byte, streamID, timestamp uint32) *Scri
 	s := &ScriptTag{}
 	s.PTS = timestamp
 	s.StreamID = streamID
-	s.Data = data
+	s.Bytes = data
 	return s
 }

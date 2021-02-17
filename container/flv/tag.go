@@ -10,67 +10,96 @@ type Header struct {
 
 // TagI ...
 type TagI interface {
-	Info() (tagType byte, len int, timestamp uint32)
+	Type() TagType
+	Len() int
+	Data() []byte
+	Timestamp() uint32
 }
 
 // AudioTag ...
 type AudioTag struct {
-	SoundFormat  byte
-	SampleRate   byte // 0-5.5kHz, 1-11kHz, 2-22kHz, 3-44kHz
-	BitPerSample byte // 0-8bit, 1-16bit
-	Channels     byte // 0-mono, 1-stereo
+	SoundFormat  SoundFormat
+	SampleRate   SoundRate // 0-5.5kHz, 1-11kHz, 2-22kHz, 3-44kHz
+	BitPerSample SoundSize // 0-8bit, 1-16bit
+	Channels     SoundType // 0-mono, 1-stereo
 
 	PTS        uint32
 	StreamID   uint32
 	PacketType byte // 0-AAC sequence header, 1-AAC raw if SoundFormat=10
-	Data       []byte
+	Bytes      []byte
 }
 
-// Info ...
-func (tag *AudioTag) Info() (tagType byte, size int, timestamp uint32) {
-	tagType = TagAudio
-	timestamp = tag.PTS
-	size = len(tag.Data) + 1
-	if tag.SoundFormat == AudioAAC {
+func (tag *AudioTag) Type() TagType {
+	return TagAudio
+}
+
+func (tag *AudioTag) Len() int {
+	size := len(tag.Bytes) + 1
+	if tag.SoundFormat == AAC {
 		size++
 	}
-	return tagType, size, timestamp
+	return size
+}
+
+func (tag *AudioTag) Data() []byte {
+	return tag.Bytes
+}
+
+func (tag *AudioTag) Timestamp() uint32 {
+	return tag.PTS
 }
 
 // VideoTag ...
 type VideoTag struct {
-	FrameType byte
-	CodecID   byte
+	FrameType Format
+	CodecID   CodecID
 
 	DTS        uint32
 	PTS        uint32
 	StreamID   uint32
 	PacketType byte // 0-AVC sequence header, 1-AVC NALU, 2-AVC end of sequence if CodecID=7
-	Data       []byte
+	Bytes      []byte
 }
 
-// Info ...
-func (tag *VideoTag) Info() (tagType byte, size int, timestamp uint32) {
-	tagType = TagVideo
-	timestamp = tag.DTS
-	size = len(tag.Data) + 1
-	if tag.CodecID == VideoH264 || tag.CodecID == VideoH265 {
+func (tag *VideoTag) Type() TagType {
+	return TagVideo
+}
+
+func (tag *VideoTag) Len() int {
+	size := len(tag.Bytes) + 1
+	if tag.CodecID == H264 || tag.CodecID == H265 {
 		size += 4
 	}
-	return tagType, size, timestamp
+	return size
+}
+
+func (tag *VideoTag) Data() []byte {
+	return tag.Bytes
+}
+
+func (tag *VideoTag) Timestamp() uint32 {
+	return tag.DTS
 }
 
 // ScriptTag ...
 type ScriptTag struct {
 	PTS      uint32
 	StreamID uint32
-	Data     []byte
+	Bytes    []byte
 }
 
-// Info ...
-func (tag *ScriptTag) Info() (tagType byte, size int, timestamp uint32) {
-	tagType = TagScript
-	timestamp = tag.PTS
-	size = len(tag.Data)
-	return tagType, size, timestamp
+func (tag *ScriptTag) Type() TagType {
+	return TagScript
+}
+
+func (tag *ScriptTag) Len() int {
+	return len(tag.Bytes)
+}
+
+func (tag *ScriptTag) Data() []byte {
+	return tag.Bytes
+}
+
+func (tag *ScriptTag) Timestamp() uint32 {
+	return tag.PTS
 }

@@ -44,8 +44,8 @@ func (muxer *Muxer) WriteHeader(w io.Writer, hasAudio, hasVideo bool) error {
 // WriteTag sends tag.
 func (muxer *Muxer) WriteTag(w io.Writer, tag TagI) error {
 	header := muxer.writeTagHeaderBuf[:]
-	tagType, tagLen, tagTimestamp := tag.Info()
-	writeTagHeader(header[:11], tagType, tagLen, tagTimestamp)
+	tagType, tagLen, tagTimestamp := tag.Type(), tag.Len(), tag.Timestamp()
+	writeTagHeader(header[:11], byte(tagType), tagLen, tagTimestamp)
 	if err := utils.WriteFull(w, header[:11]); err != nil {
 		return err
 	}
@@ -79,9 +79,9 @@ func (muxer *Muxer) audioTag(w io.Writer, tag *AudioTag) error {
 	h := muxer.muxerAudioTagBuf[:]
 	n := 1
 	switch tag.SoundFormat {
-	case AudioAAC:
+	case AAC:
 		// 44k-SoundRate / 16-bit Samples / Stereo sound
-		h[0] = (tag.SoundFormat << 4) | (3 << 2) | (1 << 1) | 1
+		h[0] = byte((tag.SoundFormat << 4) | (3 << 2) | (1 << 1) | 1)
 		h[1] = tag.PacketType
 		n++
 	default:
@@ -94,12 +94,15 @@ func (muxer *Muxer) audioTag(w io.Writer, tag *AudioTag) error {
 		if tag.BitPerSample != 0 && tag.BitPerSample != 1 {
 			return fmt.Errorf("flv muxer audio tag invalid BitPerSample %d", tag.BitPerSample)
 		}
-		h[0] = (tag.SoundFormat << 4) | (tag.SampleRate&0x03)<<2 | (tag.BitPerSample&0x01)<<1 | (tag.Channels & 0x01)
+		h[0] = byte(tag.SoundFormat<<4) |
+			byte((tag.SampleRate&0x03)<<2) |
+			byte((tag.BitPerSample&0x01)<<1) |
+			byte(tag.Channels&0x01)
 	}
 	if err := utils.WriteFull(w, h[:n]); err != nil {
 		return err
 	}
-	return utils.WriteFull(w, tag.Data)
+	return utils.WriteFull(w, tag.Bytes)
 }
 func (muxer *Muxer) videoTag(w io.Writer, tag *VideoTag) error {
 	if tag.FrameType > 0x0f {
@@ -113,22 +116,22 @@ func (muxer *Muxer) videoTag(w io.Writer, tag *VideoTag) error {
 	}
 	h := muxer.muxerVideoTagBuf[:]
 	n := 1
-	h[0] = (tag.FrameType << 4) | tag.CodecID
+	h[0] = byte(tag.FrameType<<4) | byte(tag.CodecID)
 	switch tag.CodecID {
-	case VideoH264, VideoH265:
+	case H264, H265:
 		compositionTime := tag.PTS - tag.DTS
 		h[1] = tag.PacketType
 		utils.BigEndianPutUint24(h[2:5], compositionTime)
 		n += 4
 	}
-	if err := utils.WriteFull(w, h); err != nil {
+	if err := utils.WriteFull(w, h[:n]); err != nil {
 		return err
 	}
-	return utils.WriteFull(w, tag.Data)
+	return utils.WriteFull(w, tag.Bytes)
 }
 
 func scriptTag(w io.Writer, tag *ScriptTag) error {
-	return utils.WriteFull(w, tag.Data)
+	return utils.WriteFull(w, tag.Bytes)
 }
 
 func writeTagHeader(header []byte, tagType byte, size int, timestamp uint32) {

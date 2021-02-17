@@ -18,8 +18,7 @@ func NewParser(handler Handler) *Parser {
 type Parser struct {
 	handler Handler
 
-	p    *riff.Parser
-	data []byte
+	p *riff.Parser
 }
 
 func (p *Parser) Input(data []byte) error {

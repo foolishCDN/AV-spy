@@ -19,8 +19,7 @@ import (
 )
 
 func TestParser(t *testing.T) {
-	//path := "forest.wav"
-	path := "../../encoding/riff/test.wav"
+	path := "forest.wav"
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		t.Fatal(err)

@@ -129,25 +129,11 @@ func (encoder *Encoder) EncodeString(w io.Writer, str string) error {
 }
 
 func (encoder *Encoder) EncodeObject(w io.Writer, m map[string]interface{}) error {
-	ok, err := encoder.writeReference(w, m)
-	if err != nil {
-		return err
-	}
-	if ok {
-		return nil
-	}
 	encoder.refObjects = append(encoder.refObjects, m)
 	return encoder.writeObject(w, m)
 }
 
 func (encoder *Encoder) EncodeECMAArray(w io.Writer, array ECMAArray) error {
-	ok, err := encoder.writeReference(w, array)
-	if err != nil {
-		return err
-	}
-	if ok {
-		return nil
-	}
 	encoder.refObjects = append(encoder.refObjects, array)
 	if err := encoder.EncodeMarker(w, ECMAArrayMarker); err != nil {
 		return err
@@ -161,13 +147,6 @@ func (encoder *Encoder) EncodeECMAArray(w io.Writer, array ECMAArray) error {
 }
 
 func (encoder *Encoder) EncodeStrictArray(w io.Writer, array []interface{}) error {
-	ok, err := encoder.writeReference(w, array)
-	if err != nil {
-		return err
-	}
-	if ok {
-		return nil
-	}
 	encoder.refObjects = append(encoder.refObjects, array)
 	if err := encoder.EncodeMarker(w, StrictArrayMarker); err != nil {
 		return err
@@ -220,13 +199,6 @@ func (encoder *Encoder) EncodeXMLDocument(w io.Writer, document XMLDocumentType)
 }
 
 func (encoder *Encoder) EncodeTypedObject(w io.Writer, object *TypedObjectType) error {
-	ok, err := encoder.writeReference(w, object)
-	if err != nil {
-		return err
-	}
-	if ok {
-		return nil
-	}
 	if len(object.ClassName) > math.MaxUint16 {
 		return errors.New("typedObject class name too long")
 	}
@@ -262,22 +234,6 @@ func (encoder *Encoder) writeObject(w io.Writer, m map[string]interface{}) error
 		return err
 	}
 	return encoder.EncodeMarker(w, ObjectEndMarker)
-}
-
-func (encoder *Encoder) writeReference(w io.Writer, v interface{}) (bool, error) {
-	for i := range encoder.refObjects {
-		if encoder.refObjects[i] == v {
-			if err := encoder.EncodeMarker(w, ReferenceMarker); err != nil {
-				return false, err
-			}
-			binary.BigEndian.PutUint16(encoder.u16[:], uint16(i))
-			if _, err := w.Write(encoder.u16[:]); err != nil {
-				return false, err
-			}
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 func (encoder *Encoder) writeUTF8(w io.Writer, str string, length uint16) error {
@@ -349,14 +305,7 @@ func (encoder *Encoder) EncodeXMLDocAMF3(w io.Writer, v XMLDocumentType) error {
 	if err := encoder.EncodeMarker(w, XMLDocMarkerAMF3); err != nil {
 		return err
 	}
-	ok, err := encoder.writeObjectRefAMF3(w, v)
-	if err != nil {
-		return err
-	}
-	if ok {
-		return nil
-	}
-	if err = writeUTF8AMF3(w, string(v)); err != nil {
+	if err := writeUTF8AMF3(w, string(v)); err != nil {
 		return err
 	}
 	encoder.refObjects = append(encoder.refObjects, v)
@@ -366,13 +315,6 @@ func (encoder *Encoder) EncodeXMLDocAMF3(w io.Writer, v XMLDocumentType) error {
 func (encoder *Encoder) EncodeDateAMF3(w io.Writer, v DateType) error {
 	if err := encoder.EncodeMarker(w, DateMarkerAMF3); err != nil {
 		return err
-	}
-	ok, err := encoder.writeObjectRefAMF3(w, v)
-	if err != nil {
-		return err
-	}
-	if ok {
-		return nil
 	}
 	date := math.Float64bits(float64(v))
 	binary.BigEndian.PutUint64(encoder.u64[:], date)
@@ -386,13 +328,6 @@ func (encoder *Encoder) EncodeDateAMF3(w io.Writer, v DateType) error {
 func (encoder *Encoder) EncodeArrayAMF3(w io.Writer, v []interface{}) error {
 	if err := encoder.EncodeMarker(w, ArrayMarkerAMF3); err != nil {
 		return err
-	}
-	ok, err := encoder.writeObjectRefAMF3(w, v)
-	if err != nil {
-		return err
-	}
-	if ok {
-		return nil
 	}
 	encoder.refObjects = append(encoder.refObjects, v)
 	if err := EncodeUint29(w, uint32(len(v))<<1); err != nil {
@@ -411,19 +346,11 @@ func (encoder *Encoder) EncodeArrayAMF3(w io.Writer, v []interface{}) error {
 
 func (encoder *Encoder) EncodeObjectAMF3() error {
 	panic("amf3 encoder: not support object")
-	return nil
 }
 
 func (encoder *Encoder) EncodeXMLAMF3(w io.Writer, v XMLTypeAMF3) error {
 	if err := encoder.EncodeMarker(w, XMLMarkerAMF3); err != nil {
 		return err
-	}
-	ok, err := encoder.writeObjectRefAMF3(w, v)
-	if err != nil {
-		return err
-	}
-	if ok {
-		return nil
 	}
 	if err := writeUTF8AMF3(w, string(v)); err != nil {
 		return err
@@ -435,13 +362,6 @@ func (encoder *Encoder) EncodeXMLAMF3(w io.Writer, v XMLTypeAMF3) error {
 func (encoder *Encoder) EncodeByteArrayAMF3(w io.Writer, v []byte) error {
 	if err := encoder.EncodeMarker(w, ByteArrayMarkerAMF3); err != nil {
 		return err
-	}
-	ok, err := encoder.writeObjectRefAMF3(w, v)
-	if err != nil {
-		return err
-	}
-	if ok {
-		return nil
 	}
 	length := len(v)
 	if err := EncodeUint29(w, uint32(length<<1)); err != nil {
@@ -462,18 +382,6 @@ func (encoder *Encoder) writeStringAMF3(w io.Writer, str string) error {
 	}
 	encoder.refStrings = append(encoder.refStrings, str)
 	return nil
-}
-
-func (encoder *Encoder) writeObjectRefAMF3(w io.Writer, v interface{}) (ok bool, err error) {
-	for i := range encoder.refObjects {
-		if v == encoder.refObjects[i] {
-			if err := EncodeUint29(w, uint32(i<<1|0x01)); err != nil {
-				return false, err
-			}
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 func writeUTF8AMF3(w io.Writer, str string) error {
