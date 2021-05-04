@@ -69,7 +69,6 @@ func (demuxer *Demuxer) ReadTag(r io.Reader) (TagI, error) {
 		return nil, err
 	}
 	size := utils.BigEndianUint24(tagHeader[1:4])
-	fmt.Println(size)
 	data := make([]byte, size+4) // has previousTagSizeN
 	if _, err := io.ReadFull(r, data); err != nil {
 		return nil, err

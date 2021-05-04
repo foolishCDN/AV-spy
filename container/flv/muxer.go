@@ -59,22 +59,6 @@ func (muxer *Muxer) WriteTag(w io.Writer, tag TagI) error {
 	return nil
 }
 
-// WriteEOS sends `end of sequence` in case the live stream is abnormally disconnected.
-func (muxer *Muxer) WriteEOS(w io.Writer) error {
-	header := make([]byte, 20)
-	writeTagHeader(header, TagVideo, 5, 0)
-	header[11] = (1 << 4 /* FrameType */) | 7 /* AVC */
-	header[12] = EndOfSequence
-	header[13] = 0
-	header[14] = 0
-	header[15] = 0
-	binary.BigEndian.PutUint32(header[16:], 16) // PreviousTagSize
-	if n, err := w.Write(header); err != nil || n != 20 {
-		return fmt.Errorf("flv write EOS %d, error %v", n, err)
-	}
-	return nil
-}
-
 func (muxer *Muxer) mux(w io.Writer, tag TagI) error {
 	switch t := tag.(type) {
 	case *AudioTag:

@@ -50,3 +50,29 @@ func TestMuxerAndDemuxer(t *testing.T) {
 	}
 	fmt.Println(maxSize)
 }
+
+func TestParser(t *testing.T) {
+	r, err := os.Open("test.flv")
+	if err != nil {
+		t.Fatalf("open flv file err, %v", err)
+	}
+	defer r.Close()
+	parser := NewParser(func(tag TagI) error {
+		fmt.Println(tag.Info())
+		return nil
+	})
+	for {
+		var b = make([]byte, 1024)
+		n, err := r.Read(b)
+		if err != nil {
+			if err != io.EOF {
+				t.Fatalf("read tag err, %v", err)
+			} else {
+				break
+			}
+		}
+		if err := parser.Input(b[:n]); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
