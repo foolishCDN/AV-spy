@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -9,7 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
+
 	"github.com/sikasjc/AV-spy/container/flv"
+	"github.com/sikasjc/AV-spy/encoding/amf"
 )
 
 func main() {
@@ -35,12 +39,7 @@ func main() {
 	fmt.Printf("HasAudio: %t\n", header.HasAudio)
 	fmt.Printf("HeaderSize: %d\n", header.DataOffset)
 	fmt.Println("------------------------------")
-	i := 0
 	for {
-		i++
-		if i > 10 {
-			break
-		}
 		tag, err := demuxer.ReadTag(r)
 		if err != nil {
 			if err == io.EOF {
@@ -58,6 +57,17 @@ func main() {
 				t.StreamID, t.PTS, flv.VideoFormatTypeMap[t.FrameType], flv.VideoCodecIDMap[t.CodecID])
 		case *flv.ScriptTag:
 			fmt.Printf("{SCRIPT} %d %d\n", t.StreamID, t.PTS)
+			decoder := amf.NewDecoder()
+			buf := bytes.NewBuffer(t.Data)
+			got, err := decoder.DecodeBatch(buf)
+			if err != nil {
+				if err != io.EOF {
+					log.Fatal(err)
+				}
+			}
+			fmt.Println("---------- MetaData ----------")
+			spew.Dump(got)
+			fmt.Println("------------------------------")
 		}
 	}
 }
