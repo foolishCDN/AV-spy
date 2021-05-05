@@ -57,7 +57,7 @@ func main() {
 				t.StreamID, t.PTS, flv.VideoFormatTypeMap[t.FrameType], flv.VideoCodecIDMap[t.CodecID])
 		case *flv.ScriptTag:
 			fmt.Printf("{SCRIPT} %d %d\n", t.StreamID, t.PTS)
-			decoder := amf.NewDecoder()
+			decoder := amf.NewDecoder(amf.Version0)
 			buf := bytes.NewBuffer(t.Data)
 			got, err := decoder.DecodeBatch(buf)
 			if err != nil {

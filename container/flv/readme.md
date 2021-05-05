@@ -1,6 +1,6 @@
 ## flv muxer, demuxer/parser
 ### Usage
-Please refer to [flv_test.go](https://github.com/foolishCDN/AV-spy/blob/master/container/flv/flv_test.go) for usage
+Please refer to [flv_test.go](https://github.com/foolishCDN/AV-spy/blob/master/container/flv/flv_test.go) and [simpleFlvParser](https://github.com/foolishCDN/AV-spy/tree/master/cmd/simpleFlvParser) for usage.
 #### muxer
 ```Go
 ...
