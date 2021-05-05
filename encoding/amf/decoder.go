@@ -120,6 +120,7 @@ func (decoder *Decoder) readBoolean(r io.Reader) (bool, error) {
 // Any typed object that does not have a registered class should be treated as an anonymous ActionScript object.
 // If the same object instance appears in an object graph it should be sent by reference using an AMF 0.
 // Use the reference type to reduce redundant information from being serialized and infinite loops from cyclical references.
+//
 // object-property = (UTF-8 value-type) | (UTF-8-empty object-end-marker)
 // anonymous-object-type = object-marker *(object-property)
 func (decoder *Decoder) readObject(r io.Reader) (map[string]interface{}, error) {
@@ -180,7 +181,7 @@ func (decoder *Decoder) readReference(r io.Reader) (interface{}, error) {
 // ecma-array-type = associative-count *(object-property)
 //
 // A 32-bit associative-count implies a theoretical maximum of 4,294,967,295 associative array entries.
-func (decoder *Decoder) readECMAArray(r io.Reader) (map[string]interface{}, error) {
+func (decoder *Decoder) readECMAArray(r io.Reader) (ECMAArray, error) {
 	if _, err := r.Read(decoder.u32[:]); err != nil {
 		return nil, err
 	}

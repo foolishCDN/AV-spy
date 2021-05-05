@@ -9,6 +9,7 @@ type TypedObjectType struct {
 	ClassName string
 	Object    map[string]interface{}
 }
+type ECMAArray map[string]interface{}
 
 const (
 	NumberMarker byte = iota
