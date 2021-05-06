@@ -78,6 +78,7 @@ func main() {
 				fmt.Println("-- sequence header of video --")
 				printer.Println(avc)
 				fmt.Println("------------------------------")
+				continue
 			}
 			if !*showPackets {
 				continue

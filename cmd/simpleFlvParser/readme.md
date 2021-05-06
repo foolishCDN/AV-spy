@@ -2,9 +2,17 @@
 
 ### Usage
 ```
-usage:
-simpleFlvParser input.flv
-simpleFlvParser http://path/to/input.flv
+Usage:
+        simpleFlvParser [options] input.flv
+        simpleFlvParser [options] http://path/to/input.flv
+
+Options:
+  -show_extradata
+        will show codec extradata(sequence header)
+  -show_metadata
+        will show meta data (default true)
+  -show_packets
+        will show packets info
 ```
 ### output
 
@@ -15,31 +23,17 @@ HasVideo: true
 HasAudio: true
 HeaderSize: 9
 ------------------------------
-{SCRIPT} 0 0
 ---------- MetaData ----------
-([]interface {}) (len=2 cap=2) {
- (string) (len=10) "onMetaData",
- (amf.ECMAArray) (len=16) {
-  (string) (len=15) "audiosamplesize": (float64) 16,
-  (string) (len=7) "encoder": (string) (len=13) "Lavf58.20.100",
-  (string) (len=8) "filesize": (float64) 1.524829e+06,
-  (string) (len=12) "videocodecid": (float64) 7,
-  (string) (len=6) "stereo": (bool) true,
-  (string) (len=12) "audiocodecid": (float64) 2,
-  (string) (len=13) "minor_version": (string) (len=1) "0",
-  (string) (len=8) "duration": (float64) 15.107,
-  (string) (len=5) "width": (float64) 544,
-  (string) (len=13) "audiodatarate": (float64) 0,
-  (string) (len=15) "audiosamplerate": (float64) 44100,
-  (string) (len=17) "compatible_brands": (string) (len=8) "mp42isom",
-  (string) (len=6) "height": (float64) 960,
-  (string) (len=13) "videodatarate": (float64) 0,
-  (string) (len=9) "framerate": (float64) 24.333333333333332,
-  (string) (len=11) "major_brand": (string) (len=4) "mp42"
- }
-}
+[ "onMetaData", { "videocodecid": 7, "audiosamplesize": 16, "videodatarate": 0, "audiodatarate": 0, "audiosamplerate": 44100, "major_brand": "mp42", "file
+size": 1524829, "duration": 15.107, "height": 960, "framerate": 24.333333333333332, "encoder": "Lavf58.20.100", "audiocodecid": 2, "minor_version": "0", "
+compatible_brands": "mp42isom", "width": 544, "stereo": true } ]
 ------------------------------
-{ VIDEO} 0 0 VideoKeyFrame VideoH264
+{SCRIPT} 0 0
+-- sequence header of video --
+{ ConfigurationVersion: 1, AVCProfileIndication: 100, ProfileCompatibility: 8, AVCLevelIndication: 31, LengthSizeMinusOne: 3, NumOfSPS: 1, LenOfSPS: 24, S
+PS: [ 103, 100, 8, 31, 172, 217, 64, 136, 30, 104, 64, 0, 0, 3, 0, 192, 0, 0, 36, 131, 198, 12, 101, 128 ], NumOfPPS: 1, LenOfPPS: 6, PPS: [ 104, 235, 227
+, 203, 34, 192 ] }
+------------------------------
 { AUDIO} 0 0 AudioMP3 AudioStereo Audio16bit Audio44KHz
 { VIDEO} 0 107 VideoKeyFrame VideoH264
 { AUDIO} 0 26 AudioMP3 AudioStereo Audio16bit Audio44KHz
@@ -50,5 +44,6 @@ HeaderSize: 9
 { VIDEO} 0 148 VideoInterFrame VideoH264
 { AUDIO} 0 131 AudioMP3 AudioStereo Audio16bit Audio44KHz
 { VIDEO} 0 354 VideoInterFrame VideoH264
+{ AUDIO} 0 157 AudioMP3 AudioStereo Audio16bit Audio44KHz
 ...
 ```
