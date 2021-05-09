@@ -64,13 +64,23 @@ func main() {
 		}
 		switch t := tag.(type) {
 		case *flv.AudioTag:
+			if t.SoundFormat == flv.AudioAAC && t.PacketType == flv.SequenceHeader && *showExtraData {
+				aac := new(codec.AACAudioSpecificConfig)
+				if err := aac.Read(t.Data); err != nil {
+					log.Fatal(err)
+				}
+				fmt.Println("-- sequence header of audio --")
+				printer.Println(aac)
+				fmt.Println("------------------------------")
+				continue
+			}
 			if !*showPackets {
 				continue
 			}
 			fmt.Printf("{ AUDIO} %d %d %s %s %s %s\n",
 				t.StreamID, t.PTS, flv.AudioSoundFormatMap[t.SoundFormat], flv.AudioSoundTypeMap[t.Channels], flv.AudioSoundSizeMap[t.BitPerSample], flv.AudioSoundRateMap[t.SampleRate])
 		case *flv.VideoTag:
-			if t.PacketType == flv.SequenceHeader && *showExtraData {
+			if t.PacketType == flv.SequenceHeader && t.CodecID == flv.VideoH264 && *showExtraData {
 				avc := new(codec.AVCDecoderConfigurationRecord)
 				if err := avc.Read(t.Data); err != nil {
 					log.Fatal(err)
