@@ -1,4 +1,12 @@
-// Package mp3 mp3 == (MPEG1 Layer3)
+// Package mp3
+//
+// I think mp3 should be a codec,
+// see https://developer.mozilla.org/en-US/docs/Web/Media/Formats/Containers#common_container_formats
+// "A good example of this is the MP3 audio file,
+// which is in fact an MPEG-1 container with a single audio track encoded using MPEG-1 Audio Layer III encoding."
+//
+// mp3 = (MPEG-1 Audio Layer III)
+//
 package mp3
 
 import "errors"
@@ -36,7 +44,7 @@ var (
 			Layer2: {0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0},
 			Layer3: {0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0},
 		},
-		MPEGVersion2_5: {
+		MPEGVersion25: {
 			Layer1: {0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256, 0},
 			Layer2: {0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0},
 			Layer3: {0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0},
@@ -48,13 +56,13 @@ var (
 	FrameSizeMap = [4][4]int{
 		Layer1: {384, 384, 384},
 		Layer2: {1152, 1152, 1152},
-		Layer3: {MPEGVersion1: 1152, MPEGVersion2: 576, MPEGVersion2_5: 576},
+		Layer3: {MPEGVersion1: 1152, MPEGVersion2: 576, MPEGVersion25: 576},
 	}
 )
 
 const (
-	MPEGVersion2_5 byte = iota
-	_                   // reserved
+	MPEGVersion25 byte = iota // version 2.5
+	_                         // reserved
 	MPEGVersion2
 	MPEGVersion1
 )
