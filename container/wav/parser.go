@@ -39,10 +39,12 @@ func (p *Parser) onChunk(chunk *riff.Chunk) error {
 			return err
 		}
 		return p.handler.OnFormat(format)
-	case bytes.Equal(chunk.ID, ChunkIDDATA):
+	case bytes.Equal(chunk.ID, ChunkIDData):
 		return p.handler.OnPCM(chunk.Data)
-	//case ChunkIDSample:
-	//	// TODO
+	case bytes.Equal(chunk.ID, ChunkIDWaveList):
+		return p.parseWaveListChunk(chunk)
+	case bytes.Equal(chunk.ID, ChunkIDSample):
+		// TODO
 	default:
 		if err := p.handler.OnUnknownChunk(chunk); err != nil {
 			return err
@@ -78,4 +80,28 @@ func (p *Parser) readFormat(data []byte) (*Format, error) {
 		format.ExtraFormat = data[18:]
 	}
 	return format, nil
+}
+
+func (p *Parser) parseWaveListChunk(chunk *riff.Chunk) error {
+	size := uint32(0)
+	for i := uint32(0); len(chunk.Data[i:]) >= 8 && i < chunk.Size; i += size + 8 {
+		id := chunk.Data[0:4]
+		size = binary.LittleEndian.Uint32(chunk.Data[4:8])
+		if len(chunk.Data[i+8:]) < int(size) {
+			return errors.New("invalid wavl chunk data")
+		}
+		data := chunk.Data[i+8 : i+8+size]
+		subChunk := &riff.Chunk{
+			ID:   id,
+			Size: size,
+			Data: data,
+		}
+		if err := p.onChunk(subChunk); err != nil {
+			return err
+		}
+	}
+	if len(chunk.Data) > 0 {
+		return errors.New("parse wavl chunk data error")
+	}
+	return nil
 }
