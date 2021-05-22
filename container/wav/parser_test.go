@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
+
 	"github.com/sikasjc/AV-spy/encoding/riff"
 
 	"github.com/sikasjc/AV-spy/utils"
@@ -17,8 +19,8 @@ import (
 )
 
 func TestParser(t *testing.T) {
-	path := "forest.wav"
-	//path := "../../encoding/riff/test.wav"
+	//path := "forest.wav"
+	path := "../../encoding/riff/test.wav"
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		t.Fatal(err)
@@ -81,6 +83,11 @@ func (p *Player) OnPCM(data []byte) error {
 	if _, err := p.player.Write(data); err != nil {
 		return fmt.Errorf("player: write to player err %v", err)
 	}
+	return nil
+}
+
+func (p *Player) OnMIDISample(sample *MIDISample) error {
+	spew.Dump(sample)
 	return nil
 }
 

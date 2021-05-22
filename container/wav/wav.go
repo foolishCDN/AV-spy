@@ -7,15 +7,17 @@ import (
 var (
 	RIFFTypeIDWAVE = []byte("WAVE")
 
-	ChunkIDFMT    = []byte("fmt ")
-	ChunkIDData   = []byte("data")
+	ChunkIDFMT  = []byte("fmt ")
+	ChunkIDData = []byte("data")
+	// ChunkIDSample allows a MIDI sampler to use the Wave file as a collection of samples
 	ChunkIDSample = []byte("smpl")
-	// ChunkIDWaveList contains a sequence of alternating silent chunks and data chunks.
+	// ChunkIDWaveList contains a sequence of alternating silent chunks and data chunks
 	ChunkIDWaveList = []byte("wavl")
 )
 
 type Handler interface {
 	OnPCM([]byte) error
-	OnFormat(format *Format) error
+	OnFormat(*Format) error
+	OnMIDISample(sample *MIDISample) error
 	OnUnknownChunk(*riff.Chunk) error
 }

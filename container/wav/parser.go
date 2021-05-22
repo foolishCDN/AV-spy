@@ -44,7 +44,7 @@ func (p *Parser) onChunk(chunk *riff.Chunk) error {
 	case bytes.Equal(chunk.ID, ChunkIDWaveList):
 		return p.parseWaveListChunk(chunk)
 	case bytes.Equal(chunk.ID, ChunkIDSample):
-		// TODO
+		return p.parseSampleChunk(chunk)
 	default:
 		if err := p.handler.OnUnknownChunk(chunk); err != nil {
 			return err
@@ -80,6 +80,39 @@ func (p *Parser) readFormat(data []byte) (*Format, error) {
 		format.ExtraFormat = data[18:]
 	}
 	return format, nil
+}
+
+func (p *Parser) parseSampleChunk(chunk *riff.Chunk) error {
+	data := chunk.Data
+	if len(data) < 36 {
+		return errors.New("invalid sample chunk data")
+	}
+	sample := &MIDISample{
+		Manufacturer:      binary.LittleEndian.Uint16(data[0:4]),
+		Product:           binary.LittleEndian.Uint16(data[4:8]),
+		SamplePeriod:      binary.LittleEndian.Uint16(data[8:12]),
+		MIDIUnityNote:     binary.LittleEndian.Uint16(data[12:16]),
+		MIDIPitchFraction: binary.LittleEndian.Uint16(data[16:20]),
+		SMPTEFormat:       binary.LittleEndian.Uint16(data[20:24]),
+		SMPTEOffset:       binary.LittleEndian.Uint16(data[24:28]),
+		NumOfSampleLoops:  binary.LittleEndian.Uint16(data[28:32]),
+		SampleData:        binary.LittleEndian.Uint16(data[32:36]),
+	}
+	data = data[36:]
+	for i := uint16(0); i < sample.NumOfSampleLoops && len(data) >= 24; i++ {
+		loop := MIDISampleLoop{
+			ID:                   binary.LittleEndian.Uint16(data[0:4]),
+			Type:                 binary.LittleEndian.Uint16(data[4:8]),
+			Start:                binary.LittleEndian.Uint16(data[8:12]),
+			End:                  binary.LittleEndian.Uint16(data[12:16]),
+			Fraction:             binary.LittleEndian.Uint16(data[16:20]),
+			NumOfTimesToPlayLoop: binary.LittleEndian.Uint16(data[20:24]),
+		}
+		data = data[24:]
+		sample.SampleLoops = append(sample.SampleLoops, loop)
+	}
+	sample.SamplerSpecificData = data
+	return p.handler.OnMIDISample(sample)
 }
 
 func (p *Parser) parseWaveListChunk(chunk *riff.Chunk) error {
