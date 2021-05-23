@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/sikasjc/AV-spy/encoding/riff"
+	"github.com/foolishCDN/AV-spy/encoding/riff"
 )
 
 func NewParser(handler Handler) *Parser {

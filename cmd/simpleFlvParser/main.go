@@ -13,10 +13,10 @@ import (
 
 	"github.com/gobs/pretty"
 
-	"github.com/sikasjc/AV-spy/codec"
+	"github.com/foolishCDN/AV-spy/codec"
 
-	"github.com/sikasjc/AV-spy/container/flv"
-	"github.com/sikasjc/AV-spy/encoding/amf"
+	"github.com/foolishCDN/AV-spy/container/flv"
+	"github.com/foolishCDN/AV-spy/encoding/amf"
 )
 
 var showExtraData = flag.Bool("show_extradata", false, "will show codec extradata(sequence header)")

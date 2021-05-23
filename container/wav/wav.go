@@ -1,7 +1,7 @@
 package wav
 
 import (
-	"github.com/sikasjc/AV-spy/encoding/riff"
+	"github.com/foolishCDN/AV-spy/encoding/riff"
 )
 
 var (

@@ -11,9 +11,9 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 
-	"github.com/sikasjc/AV-spy/encoding/riff"
+	"github.com/foolishCDN/AV-spy/encoding/riff"
 
-	"github.com/sikasjc/AV-spy/utils"
+	"github.com/foolishCDN/AV-spy/utils"
 
 	"github.com/hajimehoshi/oto"
 )

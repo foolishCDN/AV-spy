@@ -1,4 +1,4 @@
-module github.com/sikasjc/AV-spy
+module github.com/foolishCDN/AV-spy
 
 go 1.16
 

@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 
-	"github.com/sikasjc/AV-spy/utils"
+	"github.com/foolishCDN/AV-spy/utils"
 )
 
 type Writer struct {

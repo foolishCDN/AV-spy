@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/sikasjc/AV-spy/utils"
+	"github.com/foolishCDN/AV-spy/utils"
 )
 
 const (
