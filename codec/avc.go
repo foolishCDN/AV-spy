@@ -2,7 +2,6 @@ package codec
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 )
 
@@ -39,17 +38,16 @@ type AVCDecoderConfigurationRecord struct {
 	LengthSizeMinusOne byte
 
 	NumOfSPS byte
-	LenOfSPS int
-	SPS      []byte
+	SPS      [][]byte
 
 	NumOfPPS byte
-	LenOfPPS int
-	PPS      []byte
+	PPS      [][]byte
 }
 
 func (avc *AVCDecoderConfigurationRecord) Read(data []byte) error {
-	if len(data) < 9 {
-		return errors.New("sps data is nil")
+	total := len(data)
+	if total < 6 {
+		return errors.New("invalid sps data")
 	}
 	avc.ConfigurationVersion = data[0]
 	avc.AVCProfileIndication = data[1]
@@ -58,22 +56,33 @@ func (avc *AVCDecoderConfigurationRecord) Read(data []byte) error {
 	avc.LengthSizeMinusOne = data[4] & 0x03
 
 	avc.NumOfSPS = data[5] & 0x1f
-	avc.LenOfSPS = int(data[6])<<8 | int(data[7])
-	if len(data[8:]) < avc.LenOfSPS || avc.LenOfSPS <= 0 {
-		return errors.New("sps error")
-	}
-	avc.SPS = data[8 : 8+avc.LenOfSPS]
 
-	ppsData := data[8+avc.LenOfSPS:]
-	if len(ppsData) <= 3 {
+	now := 6
+	for i := byte(0); i < avc.NumOfSPS && now+2 < total; i++ {
+		length := int(data[now])<<8 | int(data[now+1])
+		if now+2+length > total {
+			return errors.New("invalid sps")
+		}
+		avc.SPS = append(avc.SPS, data[now+2:now+2+length])
+		now += 2 + length
+	}
+	if now > total {
+		return errors.New("no pps")
+	}
+
+	if len(data[now:]) == 0 {
 		return errors.New("pps data is nil")
 	}
-	avc.NumOfPPS = ppsData[0]
-	avc.LenOfPPS = int(ppsData[1])<<8 | int(ppsData[2])
-	if len(ppsData[3:]) < avc.LenOfPPS || avc.LenOfPPS <= 0 {
-		return errors.New("pps error")
+	avc.NumOfPPS = data[now]
+	now++
+	for i := byte(0); i < avc.NumOfPPS && now+2 < total; i++ {
+		length := int(data[now])<<8 | int(data[now+1])
+		if now+2+length > total {
+			return errors.New("invalid pps")
+		}
+		avc.PPS = append(avc.PPS, data[now+2:now+2+length])
+		now += 2 + length
 	}
-	avc.PPS = ppsData[3 : avc.LenOfPPS+3]
 	return nil
 }
 
@@ -84,16 +93,21 @@ func (avc *AVCDecoderConfigurationRecord) Write() []byte {
 	buf.WriteByte(avc.ProfileCompatibility)
 	buf.WriteByte(avc.AVCLevelIndication)
 	buf.WriteByte(avc.LengthSizeMinusOne | 0xfc)
-	buf.WriteByte(avc.NumOfSPS | 0xe0)
 
-	b := make([]byte, 2)
-	binary.BigEndian.PutUint16(b, uint16(avc.LenOfSPS))
-	buf.Write(b)
-	buf.Write(avc.SPS)
+	buf.WriteByte(avc.NumOfSPS | 0xe0)
+	for i := range avc.SPS {
+		n := len(avc.SPS[i])
+		buf.WriteByte(byte(n >> 8))
+		buf.WriteByte(byte(n))
+		buf.Write(avc.SPS[i])
+	}
 
 	buf.WriteByte(avc.NumOfPPS)
-	binary.BigEndian.PutUint16(b, uint16(avc.LenOfPPS))
-	buf.Write(b)
-	buf.Write(avc.PPS)
+	for i := range avc.PPS {
+		n := len(avc.PPS[i])
+		buf.WriteByte(byte(n >> 8))
+		buf.WriteByte(byte(n))
+		buf.Write(avc.PPS[i])
+	}
 	return buf.Bytes()
 }
