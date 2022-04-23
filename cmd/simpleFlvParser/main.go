@@ -75,8 +75,8 @@ func OnAudio(t *flv.AudioTag) {
 		label = "{   AAC}"
 		OnAAC(t)
 	}
-	fmt.Printf("%s %7d %7d %7d %s %s %s %s\n",
-		label, t.StreamID, t.PTS, t.PTS, t.SoundFormat.String(), t.Channels.String(), t.BitPerSample.String(), t.SampleRate.String())
+	fmt.Printf("%s %7d %7d %7d %7d %s %s %s %s\n",
+		label, t.StreamID, t.PTS, t.PTS, len(t.Data()), t.SoundFormat.String(), t.Channels.String(), t.BitPerSample.String(), t.SampleRate.String())
 }
 
 func OnVideo(t *flv.VideoTag) {
@@ -91,8 +91,8 @@ func OnVideo(t *flv.VideoTag) {
 		}
 		OnAVC(t)
 	}
-	fmt.Printf("%s %7d %7d %7d %s %s\n",
-		label, t.StreamID, t.PTS, t.DTS, t.FrameType.String(), t.CodecID.String())
+	fmt.Printf("%s %7d %7d %7d %7d %s %s\n",
+		label, t.StreamID, t.PTS, t.DTS, len(t.Data()), t.FrameType.String(), t.CodecID.String())
 }
 
 func OnScript(t *flv.ScriptTag) {
@@ -112,8 +112,8 @@ func OnScript(t *flv.ScriptTag) {
 	if !(*showPackets || *showAll) {
 		return
 	}
-	fmt.Printf("%16s %7s %7s\n", "StreamID", "PTS", "DTS")
-	fmt.Printf("{SCRIPT} %7d %7d\n", t.StreamID, t.PTS)
+	fmt.Printf("%16s %7s %7s %7s\n", "StreamID", "PTS", "DTS", "Size")
+	fmt.Printf("{SCRIPT} %7d %7d %7d\n", t.StreamID, t.PTS, len(t.Data()))
 }
 
 func main() {
