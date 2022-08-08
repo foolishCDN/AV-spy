@@ -1,0 +1,1007 @@
+From fcb89ce74196310d6d1ab4c5e413c9a3a8f2077d Mon Sep 17 00:00:00 2001
+From: sikasjc <sikasjc@163.com>
+Date: Mon, 8 Aug 2022 09:46:55 +0800
+Subject: [PATCH] AV-spy support flv
+
+---
+ cmd/AV-spy/app.go    | 247 +++++++++++++++++++++++++++++++++++++++++++
+ cmd/AV-spy/consts.go | 130 +++++++++++++++++++++++
+ cmd/AV-spy/editor.go |  30 ++++++
+ cmd/AV-spy/flv.go    | 143 +++++++++++++++++++++++++
+ cmd/AV-spy/http.go   |  38 +++++++
+ cmd/AV-spy/main.go   |  57 ++++++++--
+ cmd/AV-spy/utils.go  | 154 +++++++++++++++++++++++++++
+ go.mod               |  10 +-
+ go.sum               |  59 ++++++++---
+ readme.md            |  18 ++++
+ 10 files changed, 860 insertions(+), 26 deletions(-)
+ create mode 100644 cmd/AV-spy/app.go
+ create mode 100644 cmd/AV-spy/consts.go
+ create mode 100644 cmd/AV-spy/editor.go
+ create mode 100644 cmd/AV-spy/flv.go
+ create mode 100644 cmd/AV-spy/http.go
+ create mode 100644 cmd/AV-spy/utils.go
+
+diff --git a/cmd/AV-spy/app.go b/cmd/AV-spy/app.go
+new file mode 100644
+index 0000000..564b815
+--- /dev/null
++++ b/cmd/AV-spy/app.go
+@@ -0,0 +1,247 @@
++package main
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"io"
++	"net/url"
++
++	"github.com/awesome-gocui/gocui"
++
++	"github.com/foolishCDN/AV-spy/container/flv"
++	"github.com/mattn/go-runewidth"
++)
++
++type App struct {
++	viewIndex int
++
++	ctx    context.Context
++	cancel context.CancelFunc
++
++	tags        []flv.TagI
++	showTagInfo bool
++}
++
++func (app *App) Init(g *gocui.Gui) {
++	g.Cursor = true
++	g.InputEsc = false
++	g.Mouse = true
++	g.BgColor = gocui.ColorDefault
++	g.FgColor = gocui.ColorDefault
++	if runewidth.IsEastAsian() {
++		g.ASCII = true
++	}
++
++	g.SetManagerFunc(app.Layout)
++	app.SetKeys(g)
++}
++
++func (app *App) Layout(g *gocui.Gui) error {
++	maxX, maxY := g.Size()
++	if maxX < MinWidth || maxY < MinHeight {
++		if view, err := g.SetView(ErrorViewName, 0, 0, maxX-1, maxY-1, 0); err != nil {
++			if err != gocui.ErrUnknownView {
++				return err
++			}
++			view.Frame = true
++			view.Wrap = true
++			view.Title = "Error"
++			g.Cursor = false
++			_, _ = fmt.Fprintln(view, "Terminal is too small")
++			return nil
++		}
++	}
++	if _, err := g.View(ErrorViewName); err == nil {
++		_ = g.DeleteView(ErrorViewName)
++		_ = app.setView(g)
++	}
++	return app.InitViews(g)
++}
++
++func (app *App) InitViews(g *gocui.Gui) error {
++	maxX, maxY := g.Size()
++	for _, param := range ViewsParams() {
++		x0 := param.Position.x0.getCoordinate(maxX + 1)
++		y0 := param.Position.y0.getCoordinate(maxY + 1)
++		x1 := param.Position.x1.getCoordinate(maxX + 1)
++		y1 := param.Position.y1.getCoordinate(maxY + 1)
++		if view, err := g.SetView(param.Name, x0, y0, x1, y1, 0); err != nil {
++			if err != gocui.ErrUnknownView {
++				return err
++			}
++			view.Title = param.Title
++			view.Subtitle = param.SubTitle
++			view.Editable = param.Editable
++			view.Visible = param.Visible
++			view.Wrap = param.Wrap
++			view.Editor = param.Editor
++			view.Autoscroll = param.Autoscroll
++			setViewTextAndCursor(view, param.Text)
++		}
++	}
++
++	if app.ctx == nil {
++		_, _ = g.SetCurrentView(PathViewName)
++	}
++	return nil
++}
++
++func (app *App) SetKeys(g *gocui.Gui) {
++	_ = g.SetKeybinding(AllViewName, gocui.KeyCtrlC, gocui.ModNone, quit)
++	_ = g.SetKeybinding(AllViewName, gocui.KeyTab, gocui.ModNone, app.NextView)
++	_ = g.SetKeybinding(AllViewName, gocui.KeyEnter, gocui.ModNone, app.SubmitOrStopRequest)
++	_ = g.SetKeybinding(AllViewName, gocui.KeyCtrlR, gocui.ModNone, clearInfoView)
++
++	_ = g.SetKeybinding(PathViewName, gocui.KeyEnter, gocui.ModNone, app.SubmitOrStopRequest)
++
++	_ = g.SetKeybinding(TimestampViewName, gocui.KeyArrowUp, gocui.ModNone, scrollViewUpWith(app.showTagContent))
++	_ = g.SetKeybinding(TimestampViewName, gocui.KeyArrowDown, gocui.ModNone, scrollViewDownWith(app.showTagContent))
++	_ = g.SetKeybinding(TimestampViewName, gocui.KeyEnter, gocui.ModNone, app.switchTagVisible)
++
++	_ = g.SetKeybinding(InfoViewName, gocui.KeyArrowUp, gocui.ModNone, scrollViewUp)
++	_ = g.SetKeybinding(InfoViewName, gocui.KeyArrowDown, gocui.ModNone, scrollViewDown)
++	_ = g.SetKeybinding(InfoViewName, gocui.KeyCtrlR, gocui.ModNone, clear)
++
++	_ = g.SetKeybinding(TagViewName, gocui.KeyArrowUp, gocui.ModNone, scrollViewUp)
++	_ = g.SetKeybinding(TagViewName, gocui.KeyArrowDown, gocui.ModNone, scrollViewDown)
++}
++
++func (app *App) NextView(g *gocui.Gui, _ *gocui.View) error {
++	app.viewIndex = (app.viewIndex + 1) % len(ViewsNames)
++	if app.showTagInfo {
++		if ViewsNames[app.viewIndex] == InfoViewName {
++			_, _ = g.SetCurrentView(TagViewName)
++			return nil
++		}
++	}
++	_ = app.setView(g)
++	return nil
++}
++
++func (app *App) SubmitOrStopRequest(g *gocui.Gui, _ *gocui.View) error {
++	if app.ctx != nil {
++		select {
++		case <-app.ctx.Done():
++		default:
++			app.cancel()
++			return nil
++		}
++	}
++	return app.SubmitRequest(g)
++}
++
++func (app *App) SubmitRequest(g *gocui.Gui) error {
++	timestampView, _ := g.View(TimestampViewName)
++	timestampView.Clear()
++	latestTimestampView, _ := g.View(LatestTimestampViewName)
++	latestTimestampView.Clear()
++	app.tags = app.tags[:0]
++
++	ctx, cancel := context.WithCancel(context.Background())
++	app.ctx = ctx
++	app.cancel = cancel
++	go func(ctx context.Context) {
++		defer func() {
++			cancel()
++		}()
++		path := getViewValue(g, PathViewName)
++		u, err := url.Parse(path)
++		if err != nil {
++			showError(g, err.Error())
++			return
++		}
++		showInfo(g, "Sending request to %s\n", path)
++		r, err := doRequest(ctx, u.String())
++		if err != nil {
++			showError(g, err.Error())
++			return
++		}
++		defer func() {
++			_ = r.Close()
++		}()
++		demuxer := new(flv.Demuxer)
++		header, err := demuxer.ReadHeader(r)
++		if err != nil {
++			showError(g, "Parse flv header failed,  error: %v\n", err)
++			return
++		}
++		showNotice(g, "Flv Header:\n\t\tVersion: %d\n\t\tHasVideo: %t\n\t\tHasAudio: %t\n\t\tHeaderSize: %d\n", header.Version, header.HasVideo, header.HasAudio, header.DataOffset)
++
++		for {
++			select {
++			case <-ctx.Done():
++				return
++			default:
++			}
++			tag, err := demuxer.ReadTag(r)
++			if err != nil {
++				if errors.Is(err, io.EOF) {
++					showWarning(g, "Receive EOF")
++				} else if errors.Is(err, context.Canceled) {
++					showInfo(g, "Stop request")
++				} else {
++					showError(g, "Parse flv tag failed,  error: %v\n", err)
++				}
++				return
++			}
++			app.onTag(g, tag)
++		}
++	}(ctx)
++	return nil
++}
++
++func (app *App) setView(g *gocui.Gui) error {
++	view, err := g.SetCurrentView(ViewsNames[app.viewIndex])
++	if err == nil {
++		view.Highlight = true
++	}
++	return nil
++}
++
++func (app *App) onTag(g *gocui.Gui, tag flv.TagI) {
++	onTag(g, tag, nil)
++	app.tags = append(app.tags, tag)
++}
++
++func (app *App) hiddenTagView(g *gocui.Gui) {
++	app.showTagInfo = false
++	tagView, _ := g.View(TagViewName)
++	tagView.Clear()
++	tagView.Visible = false
++}
++
++func (app *App) switchTagVisible(g *gocui.Gui, view *gocui.View) error {
++	if app.showTagInfo {
++		app.hiddenTagView(g)
++		return nil
++	}
++	app.showTagInfo = true
++	return app.showTagContent(g, view)
++}
++
++func (app *App) showTagContent(g *gocui.Gui, view *gocui.View) error {
++	if !app.showTagInfo {
++		return nil
++	}
++	app.showTagInfo = true
++
++	_, lineIndex := view.Origin()
++	if lineIndex >= len(app.tags) {
++		showWarning(g, "please select tag!\n")
++		return nil
++	}
++	_ = view.SetHighlight(lineIndex, true)
++	_, err := view.Line(lineIndex)
++	if err != nil {
++		showWarning(g, "get line content fail, err %v\n", err)
++		return nil
++	}
++	tag := app.tags[lineIndex]
++
++	tagView, _ := g.View(TagViewName)
++	tagView.Clear()
++	tagView.Visible = true
++	onTag(g, tag, tagView)
++	return nil
++}
+diff --git a/cmd/AV-spy/consts.go b/cmd/AV-spy/consts.go
+new file mode 100644
+index 0000000..73e2c29
+--- /dev/null
++++ b/cmd/AV-spy/consts.go
+@@ -0,0 +1,130 @@
++package main
++
++import (
++	"fmt"
++	"strings"
++
++	"github.com/awesome-gocui/gocui"
++)
++
++const (
++	MinWidth  = 60
++	MinHeight = 20
++)
++
++const (
++	AllViewName   = ""
++	ErrorViewName = "error"
++
++	PathViewName            = "path"
++	InfoViewName            = "info"
++	TimestampViewName       = "timestamp"
++	LatestTimestampViewName = "latest_timestamp"
++	TagViewName             = "tag"
++)
++
++var ViewsNames = []string{
++	PathViewName,
++	InfoViewName,
++	TimestampViewName,
++}
++
++var ViewsParams = func() []ViewParam {
++	return []ViewParam{
++		{
++			Name:     PathViewName,
++			Title:    "URL - Press Enter to Request or Stop",
++			Editable: true,
++			Wrap:     true,
++			Visible:  true,
++			Editor:   &Editor{gocui.DefaultEditor},
++			Position: ViewPosition{
++				x0: position{0.0, 0},
++				y0: position{0.0, 0},
++				x1: position{1.0, -2},
++				y1: position{0.0, 3},
++			},
++			Text: *URL,
++		},
++		{
++			Name:       InfoViewName,
++			Title:      "Info - Press Ctrl-R to Clear",
++			Editor:     gocui.DefaultEditor,
++			Autoscroll: true,
++			Wrap:       true,
++			Visible:    true,
++			Position: ViewPosition{
++				x0: position{0.0, 0},
++				y0: position{0.0, 3},
++				x1: position{0.5, -2},
++				y1: position{1.0, -2},
++			},
++		},
++		{
++			Name:     TimestampViewName,
++			Title:    strings.ReplaceAll(fmt.Sprintf("Timestamp %7s %7s %7s %7s", "SID", "PTS", "DTS", "Size"), " ", "-"),
++			SubTitle: "Press Enter to Show More Info",
++			Editor:   gocui.DefaultEditor,
++			Wrap:     true,
++			Visible:  true,
++			Position: ViewPosition{
++				position{0.5, -2},
++				position{0.0, 3},
++				position{1.0, -2},
++				position{1.0, -5}},
++		},
++		{
++			Name:       LatestTimestampViewName,
++			Title:      "Latest Timestamp",
++			Editor:     gocui.DefaultEditor,
++			Autoscroll: true,
++			Wrap:       true,
++			Visible:    true,
++			Position: ViewPosition{
++				position{0.5, -2},
++				position{1.0, -5},
++				position{1.0, -2},
++				position{1.0, -2}},
++		},
++		{
++			Name:   TagViewName,
++			Title:  "Tag Info",
++			Editor: gocui.DefaultEditor,
++			Wrap:   true,
++			Position: ViewPosition{
++				x0: position{0.0, 0},
++				y0: position{0.0, 3},
++				x1: position{0.5, -2},
++				y1: position{1.0, -2},
++			},
++		},
++	}
++}
++
++type ViewParam struct {
++	Name     string
++	Title    string
++	SubTitle string
++
++	Editable   bool
++	Autoscroll bool
++	Wrap       bool
++	Visible    bool
++
++	gocui.Editor
++	Text     string
++	Position ViewPosition
++}
++
++type position struct {
++	pct float32
++	abs int
++}
++
++func (p position) getCoordinate(max int) int {
++	return int(p.pct*float32(max)) + p.abs
++}
++
++type ViewPosition struct {
++	x0, y0, x1, y1 position
++}
+diff --git a/cmd/AV-spy/editor.go b/cmd/AV-spy/editor.go
+new file mode 100644
+index 0000000..cb9443a
+--- /dev/null
++++ b/cmd/AV-spy/editor.go
+@@ -0,0 +1,30 @@
++package main
++
++import "github.com/awesome-gocui/gocui"
++
++type Editor struct {
++	editor gocui.Editor
++}
++
++func (e Editor) Edit(view *gocui.View, key gocui.Key, ch rune, mod gocui.Modifier) {
++	switch {
++	case (ch != 0 || key == gocui.KeySpace) && mod == 0:
++		e.editor.Edit(view, key, ch, mod)
++		// At the end of the line the default gcui editor adds a whitespace
++		// Force him to remove
++		ox, _ := view.Cursor()
++		if ox > 1 && ox >= len(view.Buffer())-2 {
++			view.EditDelete(false)
++		}
++		return
++	//case key == gocui.KeyEnter:
++	//	return
++	case key == gocui.KeyHome || key == gocui.KeyCtrlA:
++		view.SetCursor(0, 0)
++		return
++	case key == gocui.KeyEnd || key == gocui.KeyCtrlE:
++		view.SetCursor(len(view.Buffer()), 0)
++		return
++	}
++	e.editor.Edit(view, key, ch, mod)
++}
+diff --git a/cmd/AV-spy/flv.go b/cmd/AV-spy/flv.go
+new file mode 100644
+index 0000000..8c076ce
+--- /dev/null
++++ b/cmd/AV-spy/flv.go
+@@ -0,0 +1,143 @@
++package main
++
++import (
++	"bytes"
++	"fmt"
++	"io"
++
++	"github.com/fatih/color"
++
++	"github.com/foolishCDN/AV-spy/encoding/amf"
++
++	"github.com/awesome-gocui/gocui"
++	"github.com/foolishCDN/AV-spy/codec"
++	"github.com/foolishCDN/AV-spy/container/flv"
++)
++
++func onTag(g *gocui.Gui, tag flv.TagI, w io.Writer) {
++	switch t := tag.(type) {
++	case *flv.ScriptTag:
++		onScript(g, t, w)
++	case *flv.AudioTag:
++		onAudio(g, t, w)
++	case *flv.VideoTag:
++		onVideo(g, t, w)
++	}
++}
++
++func onAAC(g *gocui.Gui, t *flv.AudioTag, w io.Writer) {
++	aac := new(codec.AACAudioSpecificConfig)
++	if err := aac.Read(t.Bytes); err != nil {
++		showError(g, "Parse aac fail, err %v\n", err)
++		return
++	}
++	showNotice(g, "Receive aac, timestamp %d, size %d\n", t.PTS, len(t.Data()))
++	if w != nil {
++		submitEvent(func(gui *gocui.Gui) error {
++			_, _ = fmt.Fprintf(w, color.RedString("AAC Audio Specific Config:\n"))
++			prettyPrintTo(w, aac)
++			_, _ = fmt.Fprintf(w, "\n")
++			return nil
++		})
++	}
++}
++
++func onAVC(g *gocui.Gui, t *flv.VideoTag, w io.Writer) {
++	avc := new(codec.AVCDecoderConfigurationRecord)
++	if err := avc.Read(t.Bytes); err != nil {
++		showError(g, "Parse avc fail, err %v\n", err)
++		return
++	}
++	showNotice(g, "Receive avc, DTS %d PTS %d, size %d\n", t.DTS, t.PTS, len(t.Data()))
++	if w != nil {
++		submitEvent(func(gui *gocui.Gui) error {
++			_, _ = fmt.Fprintf(w, color.RedString("AVC Decoder Configuration Record:\n"))
++			prettyPrintTo(w, avc)
++			_, _ = fmt.Fprintf(w, "\n")
++			return nil
++		})
++	}
++}
++
++func onScript(g *gocui.Gui, t *flv.ScriptTag, w io.Writer) {
++	decoder := amf.NewDecoder(amf.Version0)
++	buf := bytes.NewBuffer(t.Bytes)
++	got, err := decoder.DecodeBatch(buf)
++	if err != nil {
++		showError(g, "Parse metadata fail, err %v\n", err)
++		return
++	}
++
++	showNotice(g, "Receive script tag, timestamp %d, size: %d\n", t.PTS, len(t.Data()))
++	if w != nil {
++		submitEvent(func(gui *gocui.Gui) error {
++			_, _ = fmt.Fprintf(w, color.RedString("Script Tag:\n"))
++			prettyPrintTo(w, got)
++			_, _ = fmt.Fprintf(w, color.RedString("\nData:\n"))
++			prettyPrintTo(w, t.Data())
++			return nil
++		})
++	} else {
++		submitEvent(func(gui *gocui.Gui) error {
++			timestampView, _ := gui.View(TimestampViewName)
++			_, _ = fmt.Fprintf(timestampView, "{SCRIPT} %15d %7d %7d %7d\n", t.StreamID, t.PTS, t.PTS, len(t.Data()))
++			latestTimestampView, _ := gui.View(LatestTimestampViewName)
++			_, _ = fmt.Fprintf(latestTimestampView, "{SCRIPT} %15d %7d %7d %7d\n", t.StreamID, t.PTS, t.PTS, len(t.Data()))
++			return nil
++		})
++	}
++}
++
++func onAudio(g *gocui.Gui, t *flv.AudioTag, w io.Writer) {
++	label := "{ AUDIO}"
++	if t.SoundFormat == flv.AAC && t.PacketType == flv.SequenceHeader {
++		label = "{   AAC}"
++		onAAC(g, t, w)
++	}
++	if w != nil {
++		submitEvent(func(gui *gocui.Gui) error {
++			_, _ = fmt.Fprintf(w, color.RedString("Audio Tag:\n"))
++			prettyPrintTo(w, t.Data())
++			return nil
++		})
++	} else {
++		submitEvent(func(gui *gocui.Gui) error {
++			timestampView, _ := gui.View(TimestampViewName)
++			_, _ = fmt.Fprintf(timestampView, "%s %7d %7d %7d %7d %s %s %s %s\n",
++				label, t.StreamID, t.PTS, t.PTS, len(t.Data()), t.SoundFormat.String(), t.Channels.String(), t.BitPerSample.String(), t.SampleRate.String())
++			latestTimestampView, _ := gui.View(LatestTimestampViewName)
++			_, _ = fmt.Fprintf(latestTimestampView, "%s %7d %7d %7d %7d %s %s %s %s\n",
++				label, t.StreamID, t.PTS, t.PTS, len(t.Data()), t.SoundFormat.String(), t.Channels.String(), t.BitPerSample.String(), t.SampleRate.String())
++			return nil
++		})
++	}
++}
++
++func onVideo(g *gocui.Gui, t *flv.VideoTag, w io.Writer) {
++	label := "{ VIDEO}"
++	if t.PacketType == flv.SequenceHeader {
++		label = "{   AVC}"
++		if t.CodecID == flv.H265 {
++			label = "{  HAVC}"
++		}
++		onAVC(g, t, w)
++	}
++	if w != nil {
++		submitEvent(func(gui *gocui.Gui) error {
++			_, _ = fmt.Fprintf(w, color.RedString("Video Tag:\n"))
++			prettyPrintTo(w, t.Data())
++			return nil
++		})
++	} else {
++		submitEvent(func(gui *gocui.Gui) error {
++			timestampView, _ := gui.View(TimestampViewName)
++
++			_, _ = fmt.Fprintf(timestampView, "%s %7d %7d %7d %7d %s %s\n",
++				label, t.StreamID, t.PTS, t.DTS, len(t.Data()), t.FrameType.String(), t.CodecID.String())
++			latestTimestampView, _ := gui.View(LatestTimestampViewName)
++			_, _ = fmt.Fprintf(latestTimestampView, "%s %7d %7d %7d %7d %s %s\n",
++				label, t.StreamID, t.PTS, t.DTS, len(t.Data()), t.FrameType.String(), t.CodecID.String())
++			return nil
++		})
++	}
++}
+diff --git a/cmd/AV-spy/http.go b/cmd/AV-spy/http.go
+new file mode 100644
+index 0000000..482773c
+--- /dev/null
++++ b/cmd/AV-spy/http.go
+@@ -0,0 +1,38 @@
++package main
++
++import (
++	"context"
++	"fmt"
++	"io"
++	"net/http"
++	_ "net/http/pprof"
++	"time"
++
++	"github.com/tcnksm/go-httpstat"
++)
++
++func doRequest(ctx context.Context, url string) (io.ReadCloser, error) {
++	req, err := http.NewRequest(http.MethodGet, url, nil)
++	if err != nil {
++		return nil, err
++	}
++	var result httpstat.Result
++
++	req = req.WithContext(ctx)
++	req = req.WithContext(httpstat.WithHTTPStat(req.Context(), &result))
++
++	client := &http.Client{
++		Transport: &http.Transport{
++			ResponseHeaderTimeout: 10 * time.Second,
++		},
++	}
++	resp, err := client.Do(req)
++	// TODO show network info
++	if err != nil {
++		return nil, err
++	}
++	if resp.StatusCode != 200 {
++		return nil, fmt.Errorf("resp code is %d", resp.StatusCode)
++	}
++	return resp.Body, nil
++}
+diff --git a/cmd/AV-spy/main.go b/cmd/AV-spy/main.go
+index 478d590..cd7562e 100644
+--- a/cmd/AV-spy/main.go
++++ b/cmd/AV-spy/main.go
+@@ -1,18 +1,53 @@
+ package main
+ 
+-import "github.com/urfave/cli"
++import (
++	"flag"
+ 
+-var (
+-	Version   string
+-	CommitID  string
+-	BuildDate string
+-	Compiler  string
++	"github.com/awesome-gocui/gocui"
++	"github.com/sirupsen/logrus"
+ )
+ 
++var URL = flag.String("i", "", "input url")
++
++var eventChan chan func(*gocui.Gui) error
++
+ func main() {
+-	app := cli.NewApp()
+-	app.Name = "AV-spy"
+-	app.Usage = ""
+-	app.UsageText = ""
+-	app.Version = Version
++	logrus.SetReportCaller(true)
++
++	flag.Parse()
++
++	var g *gocui.Gui
++	var err error
++	for _, outputMode := range []gocui.OutputMode{gocui.Output256, gocui.Output216, gocui.OutputTrue, gocui.OutputNormal, gocui.OutputGrayscale} {
++		g, err = gocui.NewGui(outputMode, true)
++		if err == nil {
++			break
++		}
++		logrus.Debugf("set output mode %v fail, err %v", outputMode, err)
++	}
++	if err != nil {
++		logrus.Panicln(err)
++	}
++	defer g.Close()
++
++	g.Mouse = false
++	eventChan = make(chan func(*gocui.Gui) error, 100)
++	go update(g)
++
++	app := &App{}
++	app.Init(g)
++
++	if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
++		logrus.Panicln(err)
++	}
++}
++
++func submitEvent(event func(gui *gocui.Gui) error) {
++	eventChan <- event
++}
++
++func update(g *gocui.Gui) {
++	for event := range eventChan {
++		g.UpdateAsync(event)
++	}
+ }
+diff --git a/cmd/AV-spy/utils.go b/cmd/AV-spy/utils.go
+new file mode 100644
+index 0000000..a705b25
+--- /dev/null
++++ b/cmd/AV-spy/utils.go
+@@ -0,0 +1,154 @@
++package main
++
++import (
++	"fmt"
++	"github.com/gobs/pretty"
++	"io"
++	"strings"
++
++	"github.com/awesome-gocui/gocui"
++	"github.com/fatih/color"
++)
++
++func setViewTextAndCursor(view *gocui.View, s string) {
++	view.Clear()
++	s = strings.TrimSpace(s)
++	_, _ = fmt.Fprint(view, s)
++	_ = view.SetCursor(len(s), 0)
++}
++
++func quit(_ *gocui.Gui, _ *gocui.View) error {
++	return gocui.ErrQuit
++}
++
++func showError(g *gocui.Gui, format string, params ...interface{}) {
++	showInfo(g, color.RedString("Error! ")+format, params...)
++}
++
++func showWarning(g *gocui.Gui, format string, params ...interface{}) {
++	showInfo(g, color.MagentaString(
++		"Warning! ")+format, params...)
++}
++
++func showNotice(g *gocui.Gui, format string, params ...interface{}) {
++	showInfo(g, color.YellowString("Notice! ")+format, params...)
++}
++
++func showInfo(g *gocui.Gui, format string, params ...interface{}) {
++	submitEvent(func(gui *gocui.Gui) error {
++		infoView, _ := g.View(InfoViewName)
++		if len(params) == 0 {
++			_, _ = fmt.Fprintln(infoView, format)
++			return nil
++		}
++		_, _ = fmt.Fprintf(infoView, format, params...)
++		return nil
++	})
++}
++
++func getViewValue(g *gocui.Gui, name string) string {
++	view, err := g.View(name)
++	if err != nil {
++		return ""
++	}
++	return strings.TrimSpace(view.Buffer())
++}
++
++func scrollViewUpWith(f func(*gocui.Gui, *gocui.View) error) func(*gocui.Gui, *gocui.View) error {
++	return func(g *gocui.Gui, view *gocui.View) error {
++		scrollView(view, -1)
++		return f(g, view)
++	}
++}
++
++func scrollViewDownWith(f func(*gocui.Gui, *gocui.View) error) func(*gocui.Gui, *gocui.View) error {
++	return func(g *gocui.Gui, view *gocui.View) error {
++		scrollView(view, 1)
++		return f(g, view)
++	}
++}
++
++func scrollViewUp(_ *gocui.Gui, view *gocui.View) error {
++	scrollView(view, -1)
++	return nil
++}
++
++func scrollViewDown(_ *gocui.Gui, view *gocui.View) error {
++	scrollView(view, 1)
++	return nil
++}
++
++func scrollView(view *gocui.View, dy int) {
++	view.Autoscroll = false
++	ox, oy := view.Origin()
++	if oy+dy < 0 {
++		dy = -oy
++	}
++	if _, err := view.Line(dy); dy > 0 && err != nil {
++		dy = 0
++	}
++	_ = view.SetOrigin(ox, oy+dy)
++}
++
++func clearInfoView(g *gocui.Gui, _ *gocui.View) error {
++	infoView, _ := g.View(InfoViewName)
++	infoView.Clear()
++	return nil
++}
++
++func clear(_ *gocui.Gui, view *gocui.View) error {
++	view.Clear()
++	return nil
++}
++
++func prettyPrintTo(out io.Writer, i interface{}) {
++	switch t := i.(type) {
++	case []byte:
++		dump(out, t, 16)
++		return
++	}
++	p := &pretty.Pretty{Indent: pretty.DEFAULT_INDENT, Out: out, NilString: pretty.DEFAULT_NIL, Compact: false}
++	p.Println(i)
++}
++
++func dump(out io.Writer, by []byte, number int) {
++	n := len(by)
++	rowCount := 0
++	stop := (n / number) * number
++	k := 0
++	for i := 0; i <= stop; i += number {
++		k++
++		if i+number < n {
++			rowCount = number
++		} else {
++			rowCount = min(k*number, n) % number
++		}
++
++		_, _ = fmt.Fprintf(out, color.RedString("%04d ", i))
++		for j := 0; j < rowCount; j++ {
++			_, _ = fmt.Fprintf(out, "%02x  ", by[i+j])
++		}
++		for j := rowCount; j < 8; j++ {
++			_, _ = fmt.Fprintf(out, "    ")
++		}
++		_, _ = fmt.Fprintf(out, "  '%s'\n", viewString(by[i:(i+rowCount)]))
++	}
++
++}
++
++func min(a, b int) int {
++	if a < b {
++		return a
++	}
++	return b
++}
++
++func viewString(b []byte) string {
++	r := []rune(string(b))
++	for i := range r {
++		if r[i] < 32 || r[i] > 126 {
++			r[i] = '.'
++		}
++	}
++	return string(r)
++}
+diff --git a/go.mod b/go.mod
+index d974be1..46099f2 100644
+--- a/go.mod
++++ b/go.mod
+@@ -3,10 +3,16 @@ module github.com/foolishCDN/AV-spy
+ go 1.16
+ 
+ require (
++	github.com/awesome-gocui/gocui v1.1.0
+ 	github.com/davecgh/go-spew v1.1.1
++	github.com/fatih/color v1.13.0
+ 	github.com/gobs/pretty v0.0.0-20180724170744-09732c25a95b
+ 	github.com/hajimehoshi/oto v0.7.1
+-	github.com/mitchellh/mapstructure v1.4.1
++	github.com/mattn/go-colorable v0.1.12 // indirect
++	github.com/mattn/go-runewidth v0.0.13
++	github.com/sirupsen/logrus v1.9.0
++	github.com/tcnksm/go-httpstat v0.2.0
+ 	github.com/udhos/equalfile v0.3.0
+-	github.com/urfave/cli v1.22.5
++	golang.org/x/sys v0.0.0-20220804214406-8e32c043e418 // indirect
++	golang.org/x/text v0.3.7 // indirect
+ )
+diff --git a/go.sum b/go.sum
+index 122d690..846c8d6 100644
+--- a/go.sum
++++ b/go.sum
+@@ -1,24 +1,43 @@
+-github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
+-github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d h1:U+s90UTSYgptZMwQh2aRr3LuazLJIa+Pg3Kc1ylSYVY=
+-github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d/go.mod h1:maD7wRr/U5Z6m/iR4s+kqSMx2CaBsrgA7czyZG/E6dU=
++github.com/awesome-gocui/gocui v1.1.0 h1:db2j7yFEoHZjpQFeE2xqiatS8bm1lO3THeLwE6MzOII=
++github.com/awesome-gocui/gocui v1.1.0/go.mod h1:M2BXkrp7PR97CKnPRT7Rk0+rtswChPtksw/vRAESGpg=
++github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
+ github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
++github.com/fatih/color v1.13.0 h1:8LOYc1KYPPmyKMuN8QV2DNRWNbLo6LZ0iLs8+mlH53w=
++github.com/fatih/color v1.13.0/go.mod h1:kLAiJbzzSOZDVNGyDpeOxJ47H46qBXwg5ILebYFFOfk=
++github.com/gdamore/encoding v1.0.0 h1:+7OoQ1Bc6eTm5niUzBa0Ctsh6JbMW6Ra+YNuAtDBdko=
++github.com/gdamore/encoding v1.0.0/go.mod h1:alR0ol34c49FCSBLjhosxzcPHQbf2trDkoo5dl+VrEg=
++github.com/gdamore/tcell/v2 v2.4.0 h1:W6dxJEmaxYvhICFoTY3WrLLEXsQ11SaFnKGVEXW57KM=
++github.com/gdamore/tcell/v2 v2.4.0/go.mod h1:cTTuF84Dlj/RqmaCIV5p4w8uG1zWdk0SF6oBpwHp4fU=
+ github.com/gobs/pretty v0.0.0-20180724170744-09732c25a95b h1:/vQ+oYKu+JoyaMPDsv5FzwuL2wwWBgBbtj/YLCi4LuA=
+ github.com/gobs/pretty v0.0.0-20180724170744-09732c25a95b/go.mod h1:Xo4aNUOrJnVruqWQJBtW6+bTBDTniY8yZum5rF3b5jw=
+ github.com/hajimehoshi/oto v0.7.1 h1:I7maFPz5MBCwiutOrz++DLdbr4rTzBsbBuV2VpgU9kk=
+ github.com/hajimehoshi/oto v0.7.1/go.mod h1:wovJ8WWMfFKvP587mhHgot/MBr4DnNy9m6EepeVGnos=
+-github.com/mitchellh/mapstructure v1.4.1 h1:CpVNEelQCZBooIPDn+AR3NpivK/TIKU8bDxdASFVQag=
+-github.com/mitchellh/mapstructure v1.4.1/go.mod h1:bFUtVrKA4DC2yAKiSyO/QUcy7e+RRV2QTWOzhPopBRo=
++github.com/lucasb-eyer/go-colorful v1.0.3 h1:QIbQXiugsb+q10B+MI+7DI1oQLdmnep86tWFlaaUAac=
++github.com/lucasb-eyer/go-colorful v1.0.3/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
++github.com/mattn/go-colorable v0.1.9/go.mod h1:u6P/XSegPjTcexA+o6vUJrdnUu04hMope9wVRipJSqc=
++github.com/mattn/go-colorable v0.1.12 h1:jF+Du6AlPIjs2BiUiQlKOX0rt3SujHxPnksPKZbaA40=
++github.com/mattn/go-colorable v0.1.12/go.mod h1:u5H1YNBxpqRaxsYJYSkiCWKzEfiAb1Gb520KVy5xxl4=
++github.com/mattn/go-isatty v0.0.12/go.mod h1:cbi8OIDigv2wuxKPP5vlRcQ1OAZbq2CE4Kysco4FUpU=
++github.com/mattn/go-isatty v0.0.14 h1:yVuAays6BHfxijgZPzw+3Zlu5yQgKGP2/hcQbHb7S9Y=
++github.com/mattn/go-isatty v0.0.14/go.mod h1:7GGIvUiUoEMVVmxf/4nioHXj79iQHKdU27kJ6hsGG94=
++github.com/mattn/go-runewidth v0.0.10/go.mod h1:RAqKPSqVFrSLVXbA8x7dzmKdmGzieGRCM46jaSJTDAk=
++github.com/mattn/go-runewidth v0.0.13 h1:lTGmDsbAYt5DmK6OnoV7EuIF1wEIFAcxld6ypU4OSgU=
++github.com/mattn/go-runewidth v0.0.13/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
+ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
+ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+-github.com/russross/blackfriday/v2 v2.0.1 h1:lPqVAte+HuHNfhJ/0LC98ESWRz8afy9tM/0RK8m9o+Q=
+-github.com/russross/blackfriday/v2 v2.0.1/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
+-github.com/shurcooL/sanitized_anchor_name v1.0.0 h1:PdmoCO6wvbs+7yrJyMORt4/BmY5IYyJwS/kOiWx8mHo=
+-github.com/shurcooL/sanitized_anchor_name v1.0.0/go.mod h1:1NzhyTcUVG4SuEtjjoZeVRXNmyL/1OwPU0+IJeTBvfc=
++github.com/rivo/uniseg v0.1.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=
++github.com/rivo/uniseg v0.2.0 h1:S1pD9weZBuJdFmowNwbpi7BJ8TNftyUImj/0WQi72jY=
++github.com/rivo/uniseg v0.2.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=
++github.com/sirupsen/logrus v1.9.0 h1:trlNQbNUG3OdDrDil03MCb1H2o9nJ1x4/5LYw7byDE0=
++github.com/sirupsen/logrus v1.9.0/go.mod h1:naHLuLoDiP4jHNo9R0sCBMtWGeIprob74mVsIT4qYEQ=
++github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
++github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5CcY=
++github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
++github.com/tcnksm/go-httpstat v0.2.0 h1:rP7T5e5U2HfmOBmZzGgGZjBQ5/GluWUylujl0tJ04I0=
++github.com/tcnksm/go-httpstat v0.2.0/go.mod h1:s3JVJFtQxtBEBC9dwcdTTXS9xFnM3SXAZwPG41aurT8=
+ github.com/udhos/equalfile v0.3.0 h1:KhG4xhhkittrgIV/ekHtpEPh7MLxtbjm6kLEwp5Dlbg=
+ github.com/udhos/equalfile v0.3.0/go.mod h1:1LOX9HjdFMke7ryP3IPby09FkswyY5KzhhsT37wLz/Y=
+-github.com/urfave/cli v1.22.5 h1:lNq9sAHXK2qfdI8W+GRItjCEkI+2oR4d+MEHy1CKXoU=
+-github.com/urfave/cli v1.22.5/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
+ golang.org/x/exp v0.0.0-20190306152737-a1d7652674e8 h1:idBdZTd9UioThJp8KpM/rTSinK/ChZFBE43/WtIy8zg=
+ golang.org/x/exp v0.0.0-20190306152737-a1d7652674e8/go.mod h1:CJ0aWSM057203Lf6IL+f9T1iT9GByDxfZKAQTCR3kQA=
+ golang.org/x/image v0.0.0-20190227222117-0694c2d4d067 h1:KYGJGHOQy8oSi1fDlSpcZF0+juKwk/hEMv5SiwHogR0=
+@@ -26,8 +45,22 @@ golang.org/x/image v0.0.0-20190227222117-0694c2d4d067/go.mod h1:kZ7UVZpmo3dzQBMx
+ golang.org/x/mobile v0.0.0-20190415191353-3e0bab5405d6 h1:vyLBGJPIl9ZYbcQFM2USFmJBK6KI+t+z6jL0lbwjrnc=
+ golang.org/x/mobile v0.0.0-20190415191353-3e0bab5405d6/go.mod h1:E/iHnbuqvinMTCcRqshq8CkpyQDoeVncDDYHnLhea+o=
+ golang.org/x/sys v0.0.0-20190312061237-fead79001313/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+-golang.org/x/sys v0.0.0-20190429190828-d89cdac9e872 h1:cGjJzUd8RgBw428LXP65YXni0aiGNA4Bl+ls8SmLOm8=
+ golang.org/x/sys v0.0.0-20190429190828-d89cdac9e872/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
++golang.org/x/sys v0.0.0-20200116001909-b77594299b42/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
++golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
++golang.org/x/sys v0.0.0-20201119102817-f84b799fce68/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
++golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
++golang.org/x/sys v0.0.0-20210927094055-39ccf1dd6fa6/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
++golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
++golang.org/x/sys v0.0.0-20220804214406-8e32c043e418 h1:9vYwv7OjYaky/tlAeD7C4oC9EsPTlaFl1H2jS++V+ME=
++golang.org/x/sys v0.0.0-20220804214406-8e32c043e418/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
++golang.org/x/term v0.0.0-20201210144234-2321bbc49cbf h1:MZ2shdL+ZM/XzY3ZGOnh4Nlpnxz5GSOhOmtHo3iPU6M=
++golang.org/x/term v0.0.0-20201210144234-2321bbc49cbf/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
+ golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
++golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
++golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
++golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
++golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+ gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+-gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
++gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c h1:dUUwHk2QECo/6vqA44rthZ8ie2QXMNeKRTHCNY2nXvo=
++gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+diff --git a/readme.md b/readme.md
+index 5531d5c..0deade4 100644
+--- a/readme.md
++++ b/readme.md
+@@ -1,3 +1,21 @@
++# AV-Spy -- a simple interactive tool to analysis Media data
++
++**Note: Now only support FLV**
++
++## Usage
++
++You can input the http-flv url in Terminal UI, or
++```
++AV-spy -i <url>
++```
++
++
++## Install
++```
++go install github.com/foolishCDN/AV-spy/cmd/AV-spy@latest
++```
++
++
+ We want to be a human spy to get the secrets of the media world.
+ You say that the media world is built by humans. 
+ 
+-- 
+2.32.0 (Apple Git-132)
+
