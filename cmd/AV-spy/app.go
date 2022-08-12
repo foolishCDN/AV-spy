@@ -5,7 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httputil"
 	"net/url"
+	"time"
+
+	"github.com/tcnksm/go-httpstat"
 
 	"github.com/awesome-gocui/gocui"
 
@@ -19,8 +24,11 @@ type App struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	tags        []flv.TagI
-	showTagInfo bool
+	result *httpstat.Result
+
+	tags          []flv.TagI
+	isShowTagInfo bool
+	isShowNetwork bool
 }
 
 func (app *App) Init(g *gocui.Gui) {
@@ -92,12 +100,13 @@ func (app *App) SetKeys(g *gocui.Gui) {
 	_ = g.SetKeybinding(AllViewName, gocui.KeyTab, gocui.ModNone, app.NextView)
 	_ = g.SetKeybinding(AllViewName, gocui.KeyEnter, gocui.ModNone, app.SubmitOrStopRequest)
 	_ = g.SetKeybinding(AllViewName, gocui.KeyCtrlR, gocui.ModNone, clearInfoView)
+	_ = g.SetKeybinding(AllViewName, gocui.KeyCtrlQ, gocui.ModNone, app.switchViewVisible(g, NetworkViewName))
 
 	_ = g.SetKeybinding(PathViewName, gocui.KeyEnter, gocui.ModNone, app.SubmitOrStopRequest)
 
-	_ = g.SetKeybinding(TimestampViewName, gocui.KeyArrowUp, gocui.ModNone, scrollViewUpWith(app.showTagContent))
-	_ = g.SetKeybinding(TimestampViewName, gocui.KeyArrowDown, gocui.ModNone, scrollViewDownWith(app.showTagContent))
-	_ = g.SetKeybinding(TimestampViewName, gocui.KeyEnter, gocui.ModNone, app.switchTagVisible)
+	_ = g.SetKeybinding(TimestampViewName, gocui.KeyArrowUp, gocui.ModNone, scrollViewUpWith(app.showTagInfo))
+	_ = g.SetKeybinding(TimestampViewName, gocui.KeyArrowDown, gocui.ModNone, scrollViewDownWith(app.showTagInfo))
+	_ = g.SetKeybinding(TimestampViewName, gocui.KeyEnter, gocui.ModNone, app.switchViewVisible(g, TagViewName))
 
 	_ = g.SetKeybinding(InfoViewName, gocui.KeyArrowUp, gocui.ModNone, scrollViewUp)
 	_ = g.SetKeybinding(InfoViewName, gocui.KeyArrowDown, gocui.ModNone, scrollViewDown)
@@ -105,11 +114,14 @@ func (app *App) SetKeys(g *gocui.Gui) {
 
 	_ = g.SetKeybinding(TagViewName, gocui.KeyArrowUp, gocui.ModNone, scrollViewUp)
 	_ = g.SetKeybinding(TagViewName, gocui.KeyArrowDown, gocui.ModNone, scrollViewDown)
+
+	_ = g.SetKeybinding(NetworkViewName, gocui.KeyArrowUp, gocui.ModNone, scrollViewUp)
+	_ = g.SetKeybinding(NetworkViewName, gocui.KeyArrowDown, gocui.ModNone, scrollViewDown)
 }
 
 func (app *App) NextView(g *gocui.Gui, _ *gocui.View) error {
 	app.viewIndex = (app.viewIndex + 1) % len(ViewsNames)
-	if app.showTagInfo {
+	if app.isShowTagInfo {
 		if ViewsNames[app.viewIndex] == InfoViewName {
 			_, _ = g.SetCurrentView(TagViewName)
 			return nil
@@ -131,12 +143,18 @@ func (app *App) SubmitOrStopRequest(g *gocui.Gui, _ *gocui.View) error {
 	return app.SubmitRequest(g)
 }
 
-func (app *App) SubmitRequest(g *gocui.Gui) error {
+func (app *App) clearPerRequest(g *gocui.Gui) {
 	timestampView, _ := g.View(TimestampViewName)
 	timestampView.Clear()
 	latestTimestampView, _ := g.View(LatestTimestampViewName)
 	latestTimestampView.Clear()
+	networkView, _ := g.View(NetworkViewName)
+	networkView.Clear()
 	app.tags = app.tags[:0]
+}
+
+func (app *App) SubmitRequest(g *gocui.Gui) error {
+	app.clearPerRequest(g)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	app.ctx = ctx
@@ -146,22 +164,65 @@ func (app *App) SubmitRequest(g *gocui.Gui) error {
 			cancel()
 		}()
 		path := getViewValue(g, PathViewName)
-		u, err := url.Parse(path)
+		_, err := url.Parse(path)
 		if err != nil {
 			showError(g, err.Error())
 			return
+		}
+		req, err := http.NewRequest(http.MethodGet, path, nil)
+		if err != nil {
+			showError(g, err.Error())
+			return
+		}
+		var result httpstat.Result
+		req = req.WithContext(ctx)
+		req = req.WithContext(httpstat.WithHTTPStat(req.Context(), &result))
+
+		submitEvent(func(gui *gocui.Gui) error {
+			networkView, _ := g.View(NetworkViewName)
+			dump, err := httputil.DumpRequestOut(req, false)
+			if err != nil {
+				_, _ = fmt.Fprintf(networkView, "%s\n", err.Error())
+				return nil
+			}
+			_, _ = fmt.Fprintf(networkView, "%s", dump)
+			return nil
+		})
+
+		client := &http.Client{
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: 10 * time.Second,
+			},
 		}
 		showInfo(g, "Sending request to %s\n", path)
-		r, err := doRequest(ctx, u.String())
+		resp, err := client.Do(req)
+		submitEvent(func(gui *gocui.Gui) error {
+			networkView, _ := g.View(NetworkViewName)
+			_, _ = fmt.Fprintf(networkView, "%+v\n", result)
+			return nil
+		})
 		if err != nil {
 			showError(g, err.Error())
 			return
 		}
+		body := resp.Body
+		submitEvent(func(gui *gocui.Gui) error {
+			networkView, _ := g.View(NetworkViewName)
+			resp.Body = nil
+			dump, err := httputil.DumpResponse(resp, false)
+			if err != nil {
+				_, _ = fmt.Fprintf(networkView, "%s\n", err.Error())
+				return nil
+			}
+			_, _ = fmt.Fprintf(networkView, "%s", dump)
+			return nil
+		})
 		defer func() {
-			_ = r.Close()
+			_ = body.Close()
 		}()
+
 		demuxer := new(flv.Demuxer)
-		header, err := demuxer.ReadHeader(r)
+		header, err := demuxer.ReadHeader(body)
 		if err != nil {
 			showError(g, "Parse flv header failed,  error: %v\n", err)
 			return
@@ -174,7 +235,7 @@ func (app *App) SubmitRequest(g *gocui.Gui) error {
 				return
 			default:
 			}
-			tag, err := demuxer.ReadTag(r)
+			tag, err := demuxer.ReadTag(body)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
 					showWarning(g, "Receive EOF")
@@ -204,35 +265,57 @@ func (app *App) onTag(g *gocui.Gui, tag flv.TagI) {
 	app.tags = append(app.tags, tag)
 }
 
-func (app *App) hiddenTagView(g *gocui.Gui) {
-	app.showTagInfo = false
-	tagView, _ := g.View(TagViewName)
-	tagView.Clear()
-	tagView.Visible = false
+func (app *App) hiddenView(g *gocui.Gui, viewName string) {
+	switch viewName {
+	case TagViewName:
+		app.isShowTagInfo = false
+	case NetworkViewName:
+		app.isShowNetwork = false
+	}
+	view, _ := g.View(viewName)
+	view.Clear()
+	view.Visible = false
 }
 
-func (app *App) switchTagVisible(g *gocui.Gui, view *gocui.View) error {
-	if app.showTagInfo {
-		app.hiddenTagView(g)
+func (app *App) switchViewVisible(g *gocui.Gui, viewName string) func(*gocui.Gui, *gocui.View) error {
+	return func(_ *gocui.Gui, _ *gocui.View) error {
+		switch viewName {
+		case TagViewName:
+			if app.isShowTagInfo {
+				app.hiddenView(g, TagViewName)
+				return nil
+			}
+			app.isShowTagInfo = true
+			return app.showTagInfo(g)
+		case NetworkViewName:
+			if app.isShowNetwork {
+				app.hiddenView(g, NetworkViewName)
+				return nil
+			}
+			g.Cursor = true
+			_, _ = g.SetCurrentView(NetworkViewName)
+			_, _ = g.SetViewOnTop(NetworkViewName)
+			app.isShowNetwork = true
+			return app.showNetwork(g)
+		}
 		return nil
 	}
-	app.showTagInfo = true
-	return app.showTagContent(g, view)
 }
 
-func (app *App) showTagContent(g *gocui.Gui, view *gocui.View) error {
-	if !app.showTagInfo {
+func (app *App) showTagInfo(g *gocui.Gui) error {
+	if !app.isShowTagInfo {
 		return nil
 	}
-	app.showTagInfo = true
+	app.isShowTagInfo = true
 
-	_, lineIndex := view.Origin()
+	timestampView, _ := g.View(TimestampViewName)
+	_, lineIndex := timestampView.Origin()
 	if lineIndex >= len(app.tags) {
 		showWarning(g, "please select tag!\n")
 		return nil
 	}
-	_ = view.SetHighlight(lineIndex, true)
-	_, err := view.Line(lineIndex)
+	_ = timestampView.SetHighlight(lineIndex, true)
+	_, err := timestampView.Line(lineIndex)
 	if err != nil {
 		showWarning(g, "get line content fail, err %v\n", err)
 		return nil
@@ -243,5 +326,16 @@ func (app *App) showTagContent(g *gocui.Gui, view *gocui.View) error {
 	tagView.Clear()
 	tagView.Visible = true
 	onTag(g, tag, tagView)
+	return nil
+}
+
+func (app *App) showNetwork(g *gocui.Gui) error {
+	if !app.isShowNetwork {
+		return nil
+	}
+	app.isShowNetwork = true
+
+	networkView, _ := g.View(NetworkViewName)
+	networkView.Visible = true
 	return nil
 }

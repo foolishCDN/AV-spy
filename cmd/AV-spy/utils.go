@@ -54,17 +54,17 @@ func getViewValue(g *gocui.Gui, name string) string {
 	return strings.TrimSpace(view.Buffer())
 }
 
-func scrollViewUpWith(f func(*gocui.Gui, *gocui.View) error) func(*gocui.Gui, *gocui.View) error {
+func scrollViewUpWith(f func(*gocui.Gui) error) func(*gocui.Gui, *gocui.View) error {
 	return func(g *gocui.Gui, view *gocui.View) error {
 		scrollView(view, -1)
-		return f(g, view)
+		return f(g)
 	}
 }
 
-func scrollViewDownWith(f func(*gocui.Gui, *gocui.View) error) func(*gocui.Gui, *gocui.View) error {
+func scrollViewDownWith(f func(*gocui.Gui) error) func(*gocui.Gui, *gocui.View) error {
 	return func(g *gocui.Gui, view *gocui.View) error {
 		scrollView(view, 1)
-		return f(g, view)
+		return f(g)
 	}
 }
 

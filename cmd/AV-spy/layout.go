@@ -1,9 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/awesome-gocui/gocui"
 )
 
@@ -21,6 +18,7 @@ const (
 	TimestampViewName       = "timestamp"
 	LatestTimestampViewName = "latest_timestamp"
 	TagViewName             = "tag"
+	NetworkViewName         = "network"
 )
 
 var ViewsNames = []string{
@@ -33,7 +31,8 @@ var ViewsParams = func() []ViewParam {
 	return []ViewParam{
 		{
 			Name:     PathViewName,
-			Title:    "URL - Press Enter to Request or Stop",
+			Title:    "URL",
+			SubTitle: "Press Enter to Request or Stop",
 			Editable: true,
 			Wrap:     true,
 			Visible:  true,
@@ -48,7 +47,8 @@ var ViewsParams = func() []ViewParam {
 		},
 		{
 			Name:       InfoViewName,
-			Title:      "Info - Press Ctrl-R to Clear",
+			Title:      "Info",
+			SubTitle:   "Press Ctrl-R to Clear",
 			Editor:     gocui.DefaultEditor,
 			Autoscroll: true,
 			Wrap:       true,
@@ -62,7 +62,7 @@ var ViewsParams = func() []ViewParam {
 		},
 		{
 			Name:     TimestampViewName,
-			Title:    strings.ReplaceAll(fmt.Sprintf("Timestamp %7s %7s %7s %7s", "SID", "PTS", "DTS", "Size"), " ", "-"),
+			Title:    "Timestamp",
 			SubTitle: "Press Enter to Show More Info",
 			Editor:   gocui.DefaultEditor,
 			Wrap:     true,
@@ -95,6 +95,18 @@ var ViewsParams = func() []ViewParam {
 				x0: position{0.0, 0},
 				y0: position{0.0, 3},
 				x1: position{0.5, -2},
+				y1: position{1.0, -2},
+			},
+		},
+		{
+			Name:   NetworkViewName,
+			Title:  "Network",
+			Editor: gocui.DefaultEditor,
+			Wrap:   true,
+			Position: ViewPosition{
+				x0: position{0.25, 0},
+				y0: position{0.15, 0},
+				x1: position{0.75, 0},
 				y1: position{1.0, -2},
 			},
 		},
