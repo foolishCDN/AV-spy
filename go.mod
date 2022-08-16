@@ -10,8 +10,8 @@ require (
 	github.com/hajimehoshi/oto v0.7.1
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-runewidth v0.0.13
+	github.com/sikasjc/pretty v0.0.0-20220821063213-ffc2d4844d3d
 	github.com/sirupsen/logrus v1.9.0
-	github.com/tcnksm/go-httpstat v0.2.0
 	github.com/udhos/equalfile v0.3.0
 	golang.org/x/sys v0.0.0-20220804214406-8e32c043e418 // indirect
 	golang.org/x/text v0.3.7 // indirect

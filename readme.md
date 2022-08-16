@@ -3,7 +3,7 @@
 **Note: Now only support FLV**
 
 ## Usage
-
+![screencast](asset/screencast.gif)
 You can input the http-flv url in Terminal UI, or
 ```
 AV-spy -i <url>

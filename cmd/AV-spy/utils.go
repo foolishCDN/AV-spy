@@ -7,7 +7,7 @@ import (
 
 	"github.com/awesome-gocui/gocui"
 	"github.com/fatih/color"
-	"github.com/gobs/pretty"
+	"github.com/sikasjc/pretty"
 )
 
 func setViewTextAndCursor(view *gocui.View, s string) {
@@ -15,10 +15,6 @@ func setViewTextAndCursor(view *gocui.View, s string) {
 	s = strings.TrimSpace(s)
 	_, _ = fmt.Fprint(view, s)
 	_ = view.SetCursor(len(s), 0)
-}
-
-func quit(_ *gocui.Gui, _ *gocui.View) error {
-	return gocui.ErrQuit
 }
 
 func showError(g *gocui.Gui, format string, params ...interface{}) {
@@ -107,8 +103,7 @@ func prettyPrintTo(out io.Writer, i interface{}) {
 		dump(out, t, 16)
 		return
 	}
-	p := &pretty.Pretty{Indent: pretty.DEFAULT_INDENT, Out: out, NilString: pretty.DEFAULT_NIL, Compact: false}
-	p.Println(i)
+	pretty.PrintlnTo(out, i)
 }
 
 func dump(out io.Writer, by []byte, number int) {

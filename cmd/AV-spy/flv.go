@@ -31,7 +31,6 @@ func onAAC(g *gocui.Gui, t *flv.AudioTag, w io.Writer) {
 		showError(g, "Parse aac fail, err %v\n", err)
 		return
 	}
-	showNotice(g, "Receive aac, timestamp %d, size %d\n", t.PTS, len(t.Data()))
 	if w != nil {
 		submitEvent(func(gui *gocui.Gui) error {
 			_, _ = fmt.Fprintf(w, color.RedString("AAC Audio Specific Config:\n"))
@@ -48,7 +47,6 @@ func onAVC(g *gocui.Gui, t *flv.VideoTag, w io.Writer) {
 		showError(g, "Parse avc fail, err %v\n", err)
 		return
 	}
-	showNotice(g, "Receive avc, DTS %d PTS %d, size %d\n", t.DTS, t.PTS, len(t.Data()))
 	if w != nil {
 		submitEvent(func(gui *gocui.Gui) error {
 			_, _ = fmt.Fprintf(w, color.RedString("AVC Decoder Configuration Record:\n"))
@@ -67,8 +65,6 @@ func onScript(g *gocui.Gui, t *flv.ScriptTag, w io.Writer) {
 		showError(g, "Parse metadata fail, err %v\n", err)
 		return
 	}
-
-	showNotice(g, "Receive script tag, timestamp %d, size: %d\n", t.PTS, len(t.Data()))
 	if w != nil {
 		submitEvent(func(gui *gocui.Gui) error {
 			_, _ = fmt.Fprintf(w, color.RedString("Script Tag:\n"))
@@ -80,9 +76,9 @@ func onScript(g *gocui.Gui, t *flv.ScriptTag, w io.Writer) {
 	} else {
 		submitEvent(func(gui *gocui.Gui) error {
 			timestampView, _ := gui.View(TimestampViewName)
-			_, _ = fmt.Fprintf(timestampView, "{SCRIPT} %15d %7d %7d %7d\n", t.StreamID, t.PTS, t.PTS, len(t.Data()))
+			_, _ = fmt.Fprintf(timestampView, "{SCRIPT} %7d %7d %7d %7d\n", t.StreamID, t.PTS, t.PTS, len(t.Data()))
 			latestTimestampView, _ := gui.View(LatestTimestampViewName)
-			_, _ = fmt.Fprintf(latestTimestampView, "{SCRIPT} %15d %7d %7d %7d\n", t.StreamID, t.PTS, t.PTS, len(t.Data()))
+			_, _ = fmt.Fprintf(latestTimestampView, "{SCRIPT} %7d %7d %7d %7d\n", t.StreamID, t.PTS, t.PTS, len(t.Data()))
 			return nil
 		})
 	}

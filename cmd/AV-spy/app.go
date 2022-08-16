@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/tcnksm/go-httpstat"
+	"github.com/fatih/color"
 
 	"github.com/awesome-gocui/gocui"
 
@@ -24,7 +24,11 @@ type App struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	result *httpstat.Result
+	avc        []*flv.VideoTag
+	aac        []*flv.AudioTag
+	videoTags  []*flv.VideoTag
+	audioTags  []*flv.AudioTag
+	scriptTags []*flv.ScriptTag
 
 	tags          []flv.TagI
 	isShowTagInfo bool
@@ -34,7 +38,6 @@ type App struct {
 func (app *App) Init(g *gocui.Gui) {
 	g.Cursor = true
 	g.InputEsc = false
-	g.Mouse = true
 	g.BgColor = gocui.ColorDefault
 	g.FgColor = gocui.ColorDefault
 	if runewidth.IsEastAsian() {
@@ -96,7 +99,7 @@ func (app *App) InitViews(g *gocui.Gui) error {
 }
 
 func (app *App) SetKeys(g *gocui.Gui) {
-	_ = g.SetKeybinding(AllViewName, gocui.KeyCtrlC, gocui.ModNone, quit)
+	_ = g.SetKeybinding(AllViewName, gocui.KeyCtrlC, gocui.ModNone, app.quit)
 	_ = g.SetKeybinding(AllViewName, gocui.KeyTab, gocui.ModNone, app.NextView)
 	_ = g.SetKeybinding(AllViewName, gocui.KeyEnter, gocui.ModNone, app.SubmitOrStopRequest)
 	_ = g.SetKeybinding(AllViewName, gocui.KeyCtrlR, gocui.ModNone, clearInfoView)
@@ -131,6 +134,18 @@ func (app *App) NextView(g *gocui.Gui, _ *gocui.View) error {
 	return nil
 }
 
+func (app *App) quit(_ *gocui.Gui, _ *gocui.View) error {
+	if app.ctx != nil {
+		select {
+		case <-app.ctx.Done():
+		default:
+			app.cancel()
+			return nil
+		}
+	}
+	return gocui.ErrQuit
+}
+
 func (app *App) SubmitOrStopRequest(g *gocui.Gui, _ *gocui.View) error {
 	if app.ctx != nil {
 		select {
@@ -148,8 +163,16 @@ func (app *App) clearPerRequest(g *gocui.Gui) {
 	timestampView.Clear()
 	latestTimestampView, _ := g.View(LatestTimestampViewName)
 	latestTimestampView.Clear()
-	networkView, _ := g.View(NetworkViewName)
-	networkView.Clear()
+
+	app.hiddenView(g, TagViewName)
+	app.hiddenView(g, NetworkViewName)
+
+	app.avc = app.avc[:0]
+	app.aac = app.aac[:0]
+	app.videoTags = app.videoTags[:0]
+	app.audioTags = app.audioTags[:0]
+	app.scriptTags = app.scriptTags[:0]
+
 	app.tags = app.tags[:0]
 }
 
@@ -174,9 +197,9 @@ func (app *App) SubmitRequest(g *gocui.Gui) error {
 			showError(g, err.Error())
 			return
 		}
-		var result httpstat.Result
+		var trace Trace
 		req = req.WithContext(ctx)
-		req = req.WithContext(httpstat.WithHTTPStat(req.Context(), &result))
+		req = req.WithContext(WithTrace(req.Context(), &trace))
 
 		submitEvent(func(gui *gocui.Gui) error {
 			networkView, _ := g.View(NetworkViewName)
@@ -194,11 +217,14 @@ func (app *App) SubmitRequest(g *gocui.Gui) error {
 				ResponseHeaderTimeout: 10 * time.Second,
 			},
 		}
-		showInfo(g, "Sending request to %s\n", path)
+		showInfo(g, color.CyanString("Sending request to: ")+
+			color.BlueString("\n\t%s\n", path)+
+			color.CyanString("Press Ctrl-C or Enter to Stop\n")+
+			color.CyanString("Press Ctrl-Q to show request info\n"))
 		resp, err := client.Do(req)
 		submitEvent(func(gui *gocui.Gui) error {
 			networkView, _ := g.View(NetworkViewName)
-			_, _ = fmt.Fprintf(networkView, "%+v\n", result)
+			_, _ = fmt.Fprint(networkView, trace.Pretty())
 			return nil
 		})
 		if err != nil {
@@ -240,7 +266,7 @@ func (app *App) SubmitRequest(g *gocui.Gui) error {
 				if errors.Is(err, io.EOF) {
 					showWarning(g, "Receive EOF")
 				} else if errors.Is(err, context.Canceled) {
-					showInfo(g, "Stop request")
+					showInfo(g, color.CyanString("Stop request, Press Ctrl-C to Quit"))
 				} else {
 					showError(g, "Parse flv tag failed,  error: %v\n", err)
 				}
@@ -263,6 +289,50 @@ func (app *App) setView(g *gocui.Gui) error {
 func (app *App) onTag(g *gocui.Gui, tag flv.TagI) {
 	onTag(g, tag, nil)
 	app.tags = append(app.tags, tag)
+	switch t := tag.(type) {
+	case *flv.VideoTag:
+		if t.PacketType == flv.SequenceHeader {
+			if len(app.avc) > 0 {
+				showWarning(g, "Receive new avc, %d\n", len(app.avc)+1)
+			}
+			showNotice(g, "Receive avc, DTS %d PTS %d, size %d\n", t.DTS, t.PTS, len(t.Data()))
+			app.avc = append(app.avc, t)
+			return
+		}
+		if len(app.videoTags) > 0 {
+			now := int(tag.Timestamp())
+			last := int(app.videoTags[len(app.videoTags)-1].Timestamp())
+			diff := now - last
+			if now < last || diff > 100 {
+				showWarning(g, "Video timestamp skip %d, now %d -> last %d\n", diff, now, last)
+			}
+		}
+		app.videoTags = append(app.videoTags, t)
+	case *flv.AudioTag:
+		if t.SoundFormat == flv.AAC && t.PacketType == flv.SequenceHeader {
+			if len(app.aac) > 0 {
+				showWarning(g, "Receive new aac, %d\n", len(app.aac)+1)
+			}
+			showNotice(g, "Receive aac, timestamp %d, size %d\n", t.PTS, len(t.Data()))
+			app.aac = append(app.aac, t)
+			return
+		}
+		if len(app.audioTags) > 0 {
+			now := int(tag.Timestamp())
+			last := int(app.audioTags[len(app.audioTags)-1].Timestamp())
+			diff := now - last
+			if now < last || diff > 100 {
+				showWarning(g, "Audio timestamp skip %d, now %d -> last %d\n", diff, now, last)
+			}
+		}
+		app.audioTags = append(app.audioTags, t)
+	case *flv.ScriptTag:
+		if len(app.scriptTags) > 0 {
+			showWarning(g, "Receive new script tag %d\n", len(app.scriptTags)+1)
+		}
+		showNotice(g, "Receive script tag, timestamp %d, size: %d\n", t.PTS, len(t.Data()))
+		app.scriptTags = append(app.scriptTags, t)
+	}
 }
 
 func (app *App) hiddenView(g *gocui.Gui, viewName string) {

@@ -30,8 +30,6 @@ func main() {
 	}
 	defer g.Close()
 
-	g.Mouse = false
-
 	eventChan = make(chan func(*gocui.Gui) error, 100)
 	go update(g)
 
