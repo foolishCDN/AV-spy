@@ -10,10 +10,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/fatih/color"
-
 	"github.com/awesome-gocui/gocui"
-
+	"github.com/fatih/color"
 	"github.com/foolishCDN/AV-spy/container/flv"
 	"github.com/mattn/go-runewidth"
 )
@@ -342,8 +340,9 @@ func (app *App) hiddenView(g *gocui.Gui, viewName string) {
 	case NetworkViewName:
 		app.isShowNetwork = false
 	}
+
 	view, _ := g.View(viewName)
-	view.Clear()
+	//view.Clear()
 	view.Visible = false
 }
 

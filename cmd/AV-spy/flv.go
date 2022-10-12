@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/fatih/color"
-
-	"github.com/foolishCDN/AV-spy/encoding/amf"
-
 	"github.com/awesome-gocui/gocui"
+	"github.com/fatih/color"
 	"github.com/foolishCDN/AV-spy/codec"
 	"github.com/foolishCDN/AV-spy/container/flv"
+	"github.com/foolishCDN/AV-spy/encoding/amf"
 )
 
 func onTag(g *gocui.Gui, tag flv.TagI, w io.Writer) {

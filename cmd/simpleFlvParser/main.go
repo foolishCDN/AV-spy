@@ -14,8 +14,7 @@ import (
 	"github.com/foolishCDN/AV-spy/codec"
 	"github.com/foolishCDN/AV-spy/container/flv"
 	"github.com/foolishCDN/AV-spy/encoding/amf"
-
-	"github.com/gobs/pretty"
+	"github.com/sikasjc/pretty"
 )
 
 var showExtraData = flag.Bool("show_extradata", false, "will show codec extradata(sequence header)")
@@ -25,8 +24,6 @@ var showHeader = flag.Bool("show_header", false, "will show flv file header")
 var showAll = flag.Bool("show", false, "will show all message")
 
 var num = flag.Int("n", 0, "show `n` tags, default: no limit")
-
-var printer = pretty.Pretty{Compact: true, Out: os.Stdout}
 
 func OnHeader(header *flv.Header) {
 	if !(*showHeader || *showAll) {
@@ -49,7 +46,7 @@ func OnAAC(t *flv.AudioTag) {
 		log.Fatal(err)
 	}
 	fmt.Println("-- sequence header of audio --")
-	printer.Println(aac)
+	pretty.Println(aac)
 	fmt.Println("------------------------------")
 }
 
@@ -62,7 +59,7 @@ func OnAVC(t *flv.VideoTag) {
 		log.Fatal(err)
 	}
 	fmt.Println("-- sequence header of video --")
-	printer.Println(avc)
+	pretty.Println(avc)
 	fmt.Println("------------------------------")
 }
 
@@ -106,7 +103,7 @@ func OnScript(t *flv.ScriptTag) {
 	}
 	if *showMetaData || *showAll {
 		fmt.Println("---------- MetaData ----------")
-		printer.Println(got)
+		pretty.Println(got)
 		fmt.Println("------------------------------")
 	}
 	if !(*showPackets || *showAll) {
