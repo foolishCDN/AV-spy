@@ -5,7 +5,7 @@ type Header struct {
 	Version    byte
 	HasAudio   bool
 	HasVideo   bool
-	DataOffset uint32
+	DataOffset uint32 // offset in bytes from start of file to start of body (that is, size of header)
 }
 
 // TagI ...
@@ -51,7 +51,7 @@ func (tag *AudioTag) Timestamp() uint32 {
 
 // VideoTag ...
 type VideoTag struct {
-	FrameType Format
+	FrameType FrameType
 	CodecID   CodecID
 
 	DTS        uint32

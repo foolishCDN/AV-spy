@@ -16,10 +16,11 @@ type Demuxer struct {
 // ReadHeader read flv file header
 //
 // FLV File Header (9 byte)
-//     signature (3 byte) 'F', 'L', 'V'
-//     version (1 byte) 1
-//     flags (1 byte)
-//     offset (4 byte) the length of FLV header
+//
+//	signature (3 byte) 'F', 'L', 'V'
+//	version (1 byte) 1
+//	flags (1 byte)
+//	offset (4 byte) the length of FLV header
 func (demuxer *Demuxer) ReadHeader(r io.Reader) (*Header, error) {
 	header := make([]byte, 9)
 	if _, err := io.ReadFull(r, header[0:9]); err != nil {
@@ -54,15 +55,16 @@ func (demuxer *Demuxer) parseHeader(header []byte) (*Header, error) {
 	return h, nil
 }
 
-// ReadTag read flv tag
+// ReadTag read flv tag.
 //
 // FLV Tag (11 + len(data))
-//     type (1 byte)
-//     size (3 byte) start from streamID
-//     timestamp (3 byte)
-//     timestampExtended (1 byte)
-//     streamID (3 byte) always 0
-//     data
+//
+//	type (1 byte)
+//	size (3 byte) start from streamID
+//	timestamp (3 byte)
+//	timestampExtended (1 byte)
+//	streamID (3 byte) always 0
+//	data
 func (demuxer *Demuxer) ReadTag(r io.Reader) (TagI, error) {
 	tagHeader := demuxer.readTagHeaderBuf[:]
 	if _, err := io.ReadFull(r, tagHeader[:11]); err != nil {
@@ -76,12 +78,11 @@ func (demuxer *Demuxer) ReadTag(r io.Reader) (TagI, error) {
 	return demuxer.parseTag(size, tagHeader, data)
 }
 func (demuxer *Demuxer) parseTag(size uint32, tagHeader []byte, data []byte) (TagI, error) {
-	if size+11 != binary.BigEndian.Uint32(data[size:]) { // Verified by previousTagSizeN
+	if size+11 != binary.BigEndian.Uint32(data[size:]) { // verified by previousTagSizeN
 		return nil, fmt.Errorf("flv demuxer read tag size %d + 11 != %d", size, binary.BigEndian.Uint32(data[size:]))
 	}
 
 	tag, err := demuxer.demux(
-		tagHeader[0]&0xa0,                      // filter
 		TagType(tagHeader[0]&0x1f),             // tag type
 		utils.BigEndianUint24(tagHeader[8:11]), // streamID
 		(uint32(tagHeader[4])<<16)|uint32(tagHeader[5])<<8|uint32(tagHeader[6])|uint32(tagHeader[7])<<24, // timestamp
@@ -93,7 +94,7 @@ func (demuxer *Demuxer) parseTag(size uint32, tagHeader []byte, data []byte) (Ta
 	return tag, nil
 }
 
-func (demuxer *Demuxer) demux(filter byte, tagType TagType, streamID, timestamp uint32, data []byte) (t TagI, err error) {
+func (demuxer *Demuxer) demux(tagType TagType, streamID, timestamp uint32, data []byte) (t TagI, err error) {
 	switch tagType {
 	case TagAudio:
 		t = demuxer.audioTag(data, streamID, timestamp)
@@ -129,7 +130,7 @@ func (demuxer *Demuxer) videoTag(data []byte, streamID, timestamp uint32) *Video
 	v := &VideoTag{}
 	v.DTS = timestamp
 	v.StreamID = streamID
-	v.FrameType = Format((data[0] >> 4) & 0xf)
+	v.FrameType = FrameType((data[0] >> 4) & 0xf)
 	v.CodecID = CodecID(data[0] & 0xf)
 
 	switch v.CodecID {

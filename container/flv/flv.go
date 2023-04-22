@@ -18,11 +18,11 @@ const (
 	EndOfSequence
 )
 
-type Format byte
+type FrameType byte
 
 // Video FormatType
 const (
-	KeyFrame Format = iota + 1
+	KeyFrame FrameType = iota + 1
 	InterFrame
 	DisposableInterFrame // H263 only
 	GeneratedKeyFrame    // reserved for server use only
