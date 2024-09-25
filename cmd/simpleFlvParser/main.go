@@ -64,7 +64,7 @@ func OnAVC(t *flv.VideoTag) {
 }
 
 func OnAudio(t *flv.AudioTag) {
-	if !(*showPackets || *showAll) {
+	if !(*showPackets || *showExtraData || *showAll) {
 		return
 	}
 	label := "{ AUDIO}"
@@ -72,21 +72,27 @@ func OnAudio(t *flv.AudioTag) {
 		label = "{   AAC}"
 		OnAAC(t)
 	}
+	if !(*showPackets || *showAll) {
+		return
+	}
 	fmt.Printf("%s %7d %7d %7d %7d %s %s %s %s\n",
 		label, t.StreamID, t.PTS, t.PTS, len(t.Data()), t.SoundFormat.String(), t.Channels.String(), t.BitPerSample.String(), t.SampleRate.String())
 }
 
 func OnVideo(t *flv.VideoTag) {
-	if !(*showPackets || *showAll) {
+	if !(*showPackets || *showExtraData || *showAll) {
 		return
 	}
 	label := "{ VIDEO}"
 	if t.PacketType == flv.SequenceHeader {
 		label = "{   AVC}"
 		if t.CodecID == flv.H265 {
-			label = "{  HAVC}"
+			label = "{  HEVC}"
 		}
 		OnAVC(t)
+	}
+	if !(*showPackets || *showAll) {
+		return
 	}
 	fmt.Printf("%s %7d %7d %7d %7d %s %s\n",
 		label, t.StreamID, t.PTS, t.DTS, len(t.Data()), t.FrameType.String(), t.CodecID.String())
