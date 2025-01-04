@@ -1,186 +1,149 @@
 package main
 
 import (
-	"bytes"
-	"flag"
+	"errors"
 	"fmt"
+	"github.com/spf13/cobra"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"time"
 
-	"github.com/foolishCDN/AV-spy/codec"
 	"github.com/foolishCDN/AV-spy/container/flv"
-	"github.com/foolishCDN/AV-spy/encoding/amf"
-	"github.com/sikasjc/pretty"
 )
 
-var showExtraData = flag.Bool("show_extradata", false, "will show codec extradata(sequence header)")
-var showPackets = flag.Bool("show_packets", false, "will show packets info")
-var showMetaData = flag.Bool("show_metadata", false, "will show meta data")
-var showHeader = flag.Bool("show_header", false, "will show flv file header")
-var showAll = flag.Bool("show", false, "will show all message")
+var (
+	rootCmd = &cobra.Command{
+		Use:   "simpleFlvParser ...[flags] <file path of http url>",
+		Short: "SimpleFlvParser is a simple tool to parse FLV stream",
+	}
 
-var num = flag.Int("n", 0, "show `n` tags, default: no limit")
+	DefaultFormat           = "normal"
+	DefaultTimeout          = 10
+	DefaultShowPacketNumber = 20
+)
 
-func OnHeader(header *flv.Header) {
-	if !(*showHeader || *showAll) {
-		return
-	}
-	fmt.Println("---------- FLV Header ----------")
-	fmt.Printf("Version: %d\n", header.Version)
-	fmt.Printf("HasVideo: %t\n", header.HasVideo)
-	fmt.Printf("HasAudio: %t\n", header.HasAudio)
-	fmt.Printf("HeaderSize: %d\n", header.DataOffset)
-	fmt.Println("------------------------------")
-}
+var (
+	showAll       bool
+	showHeader    bool
+	showMetaData  bool
+	showPacket    bool
+	showExtraData bool
 
-func OnAAC(t *flv.AudioTag) {
-	if !(*showExtraData || *showAll) {
-		return
-	}
-	aac := new(codec.AACAudioSpecificConfig)
-	if err := aac.Read(t.Bytes); err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("-- sequence header of audio --")
-	pretty.Println(aac)
-	fmt.Println("------------------------------")
-}
+	num     int
+	timeout int
+	format  string
+)
 
-func OnAVC(t *flv.VideoTag) {
-	if !(*showExtraData || *showAll) {
-		return
-	}
-	avc := new(codec.AVCDecoderConfigurationRecord)
-	if err := avc.Read(t.Bytes); err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("-- sequence header of video --")
-	pretty.Println(avc)
-	fmt.Println("------------------------------")
-}
-
-func OnAudio(t *flv.AudioTag) {
-	if !(*showPackets || *showExtraData || *showAll) {
-		return
-	}
-	label := "{ AUDIO}"
-	if t.SoundFormat == flv.AAC && t.PacketType == flv.SequenceHeader {
-		label = "{   AAC}"
-		OnAAC(t)
-	}
-	if !(*showPackets || *showAll) {
-		return
-	}
-	fmt.Printf("%s %7d %7d %7d %7d %s %s %s %s\n",
-		label, t.StreamID, t.PTS, t.PTS, len(t.Data()), t.SoundFormat.String(), t.Channels.String(), t.BitPerSample.String(), t.SampleRate.String())
-}
-
-func OnVideo(t *flv.VideoTag) {
-	if !(*showPackets || *showExtraData || *showAll) {
-		return
-	}
-	label := "{ VIDEO}"
-	if t.PacketType == flv.SequenceHeader {
-		label = "{   AVC}"
-		if t.CodecID == flv.H265 {
-			label = "{  HEVC}"
-		}
-		OnAVC(t)
-	}
-	if !(*showPackets || *showAll) {
-		return
-	}
-	fmt.Printf("%s %7d %7d %7d %7d %s %s\n",
-		label, t.StreamID, t.PTS, t.DTS, len(t.Data()), t.FrameType.String(), t.CodecID.String())
-}
-
-func OnScript(t *flv.ScriptTag) {
-	decoder := amf.NewDecoder(amf.Version0)
-	buf := bytes.NewBuffer(t.Bytes)
-	got, err := decoder.DecodeBatch(buf)
-	if err != nil {
-		if err != io.EOF {
-			log.Fatal(err)
-		}
-	}
-	if *showMetaData || *showAll {
-		fmt.Println("---------- MetaData ----------")
-		pretty.Println(got)
-		fmt.Println("------------------------------")
-	}
-	if !(*showPackets || *showAll) {
-		return
-	}
-	fmt.Printf("%16s %7s %7s %7s\n", "StreamID", "PTS", "DTS", "Size")
-	fmt.Printf("{SCRIPT} %7d %7d %7d\n", t.StreamID, t.PTS, len(t.Data()))
+func initFlags() {
+	rootCmd.PersistentFlags().BoolVar(
+		&showAll,
+		"show",
+		false,
+		"will show all message",
+	)
+	rootCmd.PersistentFlags().BoolVar(
+		&showHeader,
+		"show_header",
+		false,
+		"will show flv file header",
+	)
+	rootCmd.PersistentFlags().BoolVar(
+		&showMetaData,
+		"show_metadata",
+		false,
+		"will show meta data",
+	)
+	rootCmd.PersistentFlags().BoolVar(
+		&showPacket,
+		"show_packets",
+		false,
+		"will show packets info",
+	)
+	rootCmd.PersistentFlags().BoolVar(
+		&showExtraData,
+		"show_extradata",
+		false,
+		"will show codec extradata(sequence header)",
+	)
+	rootCmd.PersistentFlags().IntVarP(
+		&num,
+		"number",
+		"n",
+		DefaultShowPacketNumber,
+		"show `n` packets",
+	)
+	rootCmd.PersistentFlags().IntVarP(
+		&timeout,
+		"timeout",
+		"t",
+		DefaultTimeout,
+		"timeout for http request(seconds)",
+	)
+	rootCmd.PersistentFlags().StringVarP(
+		&format,
+		"format",
+		"f",
+		DefaultFormat,
+		"output format",
+	)
 }
 
 func main() {
-	log.SetFlags(0)
-	log.SetPrefix("simpleFlvParser: ")
-	flag.Usage = usage
-	flag.Parse()
-	if !(*showPackets || *showHeader || *showExtraData || *showMetaData || *showAll) {
-		flag.PrintDefaults()
-		log.Fatal("Please set options !!!")
-	}
+	initFlags()
 
-	args := flag.Args()
-	if args == nil || len(args) < 1 {
-		usage()
-		log.Fatal("No input file !!!")
-	}
-	path := args[0]
-	r, err := parseFilePath(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer r.Close()
-
-	demuxer := new(flv.Demuxer)
-	header, err := demuxer.ReadHeader(r)
-	if err != nil {
-		log.Fatal(err)
-	}
-	OnHeader(header)
-	count := 0
-	for {
-		tag, err := demuxer.ReadTag(r)
+	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if !(showPacket || showHeader || showExtraData || showMetaData || showAll) {
+			return errors.New("please set one or more flags")
+		}
+		if len(args) < 1 {
+			return errors.New("please specify a file path of http url")
+		}
+		path := args[0]
+		r, err := parseFilePathOrURL(path)
 		if err != nil {
-			if err == io.EOF {
-				return
-			} else {
-				log.Fatal(err)
+			return err
+		}
+		defer r.Close()
+
+		p, err := NewFlvParser(format)
+		if err != nil {
+			return err
+		}
+
+		demuxer := new(flv.Demuxer)
+		header, err := demuxer.ReadHeader(r)
+		if err != nil {
+			return err
+		}
+		p.OnHeader(header)
+		count := 0
+		for {
+			tag, err := demuxer.ReadTag(r)
+			if err != nil {
+				if err == io.EOF {
+					return nil
+				} else {
+					return err
+				}
+			}
+			count++
+			if err := p.OnPacket(tag); err != nil {
+				return err
+			}
+			if num > 0 && count > num {
+				break
 			}
 		}
-		count++
-		switch t := tag.(type) {
-		case *flv.AudioTag:
-			OnAudio(t)
-		case *flv.VideoTag:
-			OnVideo(t)
-		case *flv.ScriptTag:
-			OnScript(t)
-		}
-		if *num > 0 && count > *num {
-			break
-		}
+		return nil
+	}
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
 	}
 }
 
-func usage() {
-	fmt.Fprintf(os.Stderr, "Usage:\n\t"+
-		"simpleFlvParser [options] input.flv\n\t"+
-		"simpleFlvParser [options] http://path/to/input.flv\n\n"+
-		"Options:\n")
-	flag.PrintDefaults()
-}
-
-func parseFilePath(path string) (io.ReadCloser, error) {
+func parseFilePathOrURL(path string) (io.ReadCloser, error) {
 	if isValidURL(path) {
 		req, err := http.NewRequest(http.MethodGet, path, nil)
 		if err != nil {
@@ -188,7 +151,7 @@ func parseFilePath(path string) (io.ReadCloser, error) {
 		}
 		client := &http.Client{
 			Transport: &http.Transport{
-				ResponseHeaderTimeout: 10 * time.Second,
+				ResponseHeaderTimeout: time.Duration(timeout) * time.Second,
 			},
 		}
 		resp, err := client.Do(req)
