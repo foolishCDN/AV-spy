@@ -1,5 +1,7 @@
 package flv
 
+import "github.com/foolishCDN/AV-spy/formatter"
+
 // Header FLV file header
 type Header struct {
 	Version    byte
@@ -49,6 +51,24 @@ func (tag *AudioTag) Timestamp() uint32 {
 	return tag.PTS
 }
 
+func (tag *AudioTag) ToVars() map[formatter.ElementName]interface{} {
+	streamType := "AUDIO"
+	if tag.SoundFormat == AAC && tag.PacketType == SequenceHeader {
+		streamType = "AAC"
+	}
+	return map[formatter.ElementName]interface{}{
+		formatter.ElementStreamType:        streamType,
+		formatter.ElementStreamID:          tag.StreamID,
+		formatter.ElementPTS:               tag.PTS,
+		formatter.ElementDTS:               tag.PTS,
+		formatter.ElementSize:              len(tag.Data()),
+		formatter.ElementAudioSoundFormant: tag.SoundFormat.String(),
+		formatter.ElementAudioChannels:     tag.Channels.String(),
+		formatter.ElementAudioSampleRate:   tag.SampleRate.String(),
+		formatter.ElementAudioSoundSize:    tag.BitPerSample.String(),
+	}
+}
+
 // VideoTag ...
 type VideoTag struct {
 	FrameType FrameType
@@ -81,6 +101,25 @@ func (tag *VideoTag) Timestamp() uint32 {
 	return tag.DTS
 }
 
+func (tag *VideoTag) ToVars() map[formatter.ElementName]interface{} {
+	streamType := "VIDEO"
+	if tag.PacketType == SequenceHeader {
+		streamType = "AVC"
+		if tag.CodecID == H265 {
+			streamType = "HEVC"
+		}
+	}
+	return map[formatter.ElementName]interface{}{
+		formatter.ElementStreamType:     streamType,
+		formatter.ElementStreamID:       tag.StreamID,
+		formatter.ElementPTS:            tag.PTS,
+		formatter.ElementDTS:            tag.DTS,
+		formatter.ElementSize:           len(tag.Data()),
+		formatter.ElementVideoFrameType: tag.FrameType.String(),
+		formatter.ElementVideoCodecID:   tag.CodecID.String(),
+	}
+}
+
 // ScriptTag ...
 type ScriptTag struct {
 	PTS      uint32
@@ -102,4 +141,14 @@ func (tag *ScriptTag) Data() []byte {
 
 func (tag *ScriptTag) Timestamp() uint32 {
 	return tag.PTS
+}
+
+func (tag *ScriptTag) ToVars() map[formatter.ElementName]interface{} {
+	return map[formatter.ElementName]interface{}{
+		formatter.ElementStreamType: "SCRIPT",
+		formatter.ElementStreamID:   tag.StreamID,
+		formatter.ElementPTS:        tag.PTS,
+		formatter.ElementDTS:        tag.PTS,
+		formatter.ElementSize:       len(tag.Data()),
+	}
 }
