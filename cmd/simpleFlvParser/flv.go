@@ -8,6 +8,7 @@ import (
 	"github.com/foolishCDN/AV-spy/encoding/amf"
 	"github.com/foolishCDN/AV-spy/formatter"
 	"github.com/sikasjc/pretty"
+	"github.com/sirupsen/logrus"
 	"io"
 )
 
@@ -57,11 +58,24 @@ func (p *FlvParser) OnPacket(tag flv.TagI) error {
 	switch t := tag.(type) {
 	case *flv.AudioTag:
 		if t.SoundFormat == flv.AAC && t.PacketType == flv.SequenceHeader {
-			p.OnAAC(t)
+			if err := p.OnAAC(t); err != nil {
+				logrus.WithField("error", err).Error("parse sequence header of audio AACAudioSpecificConfig failed")
+			}
 		}
 	case *flv.VideoTag:
 		if t.PacketType == flv.SequenceHeader {
-			p.OnAVC(t)
+			switch t.CodecID {
+			case flv.H264:
+				if err := p.OnAVC(t); err != nil {
+					logrus.WithField("error", err).Error("parse sequence header of video AVCDecoderConfigurationRecord failed")
+				}
+			case flv.H265:
+				if err := p.OnHEVC(t); err != nil {
+					logrus.WithField("error", err).Error("parse sequence header of video HEVCDecoderConfigurationRecord failed")
+				}
+			default:
+				logrus.WithField("codec_id", t.CodecID).Warn("unknown sequence header type of video")
+			}
 		}
 	case *flv.ScriptTag:
 		decoder := amf.NewDecoder(amf.Version0)
@@ -69,7 +83,7 @@ func (p *FlvParser) OnPacket(tag flv.TagI) error {
 		got, err := decoder.DecodeBatch(buf)
 		if err != nil {
 			if err != io.EOF {
-				return err
+				logrus.WithField("error", err).Error("parse script tag failed")
 			}
 		}
 		if showMetaData || showAll {
@@ -109,6 +123,20 @@ func (p *FlvParser) OnAVC(t *flv.VideoTag) error {
 	}
 	fmt.Println("-- sequence header of video --")
 	pretty.Println(avc)
+	fmt.Println("------------------------------")
+	return nil
+}
+
+func (p *FlvParser) OnHEVC(t *flv.VideoTag) error {
+	if !(showExtraData || showAll) {
+		return nil
+	}
+	hevc := new(codec.HEVCDecoderConfigurationRecord)
+	if err := hevc.Read(t.Bytes); err != nil {
+		return err
+	}
+	fmt.Println("-- sequence header of video --")
+	pretty.Println(hevc)
 	fmt.Println("------------------------------")
 	return nil
 }
