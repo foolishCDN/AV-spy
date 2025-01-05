@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/sirupsen/logrus"
@@ -43,9 +44,11 @@ var (
 	format        string
 
 	// http options
-	timeout   int
-	header    []string
-	follow302 bool
+	timeout    int
+	header     []string
+	follow302  bool
+	insecure   bool
+	serverName string
 )
 
 func initFlags() {
@@ -116,6 +119,18 @@ func initFlags() {
 		"L",
 		false,
 		"follow 302")
+	rootCmd.PersistentFlags().BoolVarP(
+		&insecure,
+		"insecure_tls",
+		"k",
+		false,
+		"insecure TLS connection")
+	rootCmd.PersistentFlags().StringVar(
+		&serverName,
+		"server_name",
+		"",
+		"server name for TLS handshake",
+	)
 }
 
 func main() {
@@ -126,7 +141,7 @@ func main() {
 		}
 		if !(showPacket || showHeader || showExtraData || showMetaData || showAll) {
 			cmd.Usage()
-			return errors.New("please set one or more flags")
+			return errors.New("please set one or more flags to show")
 		}
 		if len(args) < 1 {
 			cmd.Usage()
@@ -205,19 +220,7 @@ func doRequest(url string) (io.ReadCloser, error) {
 		req.Header.Set(name, value)
 	}
 	dumpRequest(req)
-	client := &http.Client{
-		Transport: &http.Transport{
-			ResponseHeaderTimeout: time.Duration(timeout) * time.Second,
-		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if follow302 {
-				logrus.Debugf("redirect to %s", req.URL.String())
-				dumpRequest(req)
-				return nil
-			}
-			return http.ErrUseLastResponse
-		},
-	}
+	client := makeClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("do request err: %v", err)
@@ -242,6 +245,26 @@ func isValidURL(path string) bool {
 		return false
 	}
 	return u.Scheme == "http" || u.Scheme == "https"
+}
+func makeClient() *http.Client {
+	client := &http.Client{
+		Transport: &http.Transport{
+			ResponseHeaderTimeout: time.Duration(timeout) * time.Second,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: insecure,
+				ServerName:         serverName,
+			},
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if follow302 {
+				logrus.Debugf("redirect to %s", req.URL.String())
+				dumpRequest(req)
+				return nil
+			}
+			return http.ErrUseLastResponse
+		},
+	}
+	return client
 }
 
 func isRedirect(statusCode int) bool {
