@@ -82,9 +82,9 @@ func (hevc *HEVCDecoderConfigurationRecord) Read(data []byte) error {
 	hevc.GeneralTierFlag = (data[1] >> 5) & 0x01
 	hevc.GeneralProfileIDC = (data[1]) & 0x01f
 	hevc.GeneralProfileCompatibilityFlags = binary.BigEndian.Uint32(data[2:])
-	hevc.GeneralConstraintIndicatorFlags = uint64(data[6]<<40 | data[7]<<32 | data[8]<<24 | data[9]<<16 | data[10]<<8 | data[11])
+	hevc.GeneralConstraintIndicatorFlags = uint64(data[6])<<40 | uint64(data[7])<<32 | uint64(data[8])<<24 | uint64(data[9])<<16 | uint64(data[10])<<8 | uint64(data[11])
 	hevc.GeneralLevelIdc = data[12]
-	hevc.MinSpatialSegmentationIdc = uint16(data[13]&0x0f<<8 | data[14])
+	hevc.MinSpatialSegmentationIdc = uint16(data[13])&0x0f<<8 | uint16(data[14])
 	hevc.ParallelismType = data[15] & 0x03
 	hevc.ChromaFormat = data[16] & 0x03
 	hevc.BitDepthLumaMinus8 = data[17] & 0x07
