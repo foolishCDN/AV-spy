@@ -1,4 +1,4 @@
-package codec
+package hevc
 
 import (
 	"encoding/binary"
