@@ -50,20 +50,66 @@ type SPS struct {
 	VUI                      VUI
 }
 
+func (sps *SPS) cropUnit() (int, int) {
+	frameMbsOnlyFlag := 0
+	if sps.FrameMbsOnlyFlag {
+		frameMbsOnlyFlag = 1
+	}
+	chromaArrayType := sps.ChromaFormatIdc
+	if sps.SeparateColourPlaneFlag {
+		chromaArrayType = 0
+	}
+	var cropUnitX int
+	var cropUnitY int
+	if chromaArrayType == 1 {
+		cropUnitX = 1
+		cropUnitY = 2 - frameMbsOnlyFlag
+	} else if chromaArrayType <= 3 {
+		subwidthC := [4]int{0 /*4:0:0*/, 2 /*4:2:0*/, 2 /*4:2:2*/, 1 /*4:4:4*/}
+		subheightC := [4]int{0 /*4:0:0*/, 2 /*4:2:0*/, 1 /*4:2:2*/, 1 /*4:4:4*/}
+		cropUnitX = subwidthC[chromaArrayType]
+		cropUnitY = subheightC[chromaArrayType] * (2 - frameMbsOnlyFlag)
+	}
+	return cropUnitX, cropUnitY
+}
+
 func (sps *SPS) FPS() float64 {
 	return sps.VUI.FPS()
 }
 
+func (sps *SPS) X() int {
+	if !sps.FrameCroppingFlag {
+		return 0
+	}
+	cropUnitX, _ := sps.cropUnit()
+	return cropUnitX * int(sps.FrameCropLeftOffset)
+}
+
+func (sps *SPS) Y() int {
+	if !sps.FrameCroppingFlag {
+		return 0
+	}
+	_, cropUnitY := sps.cropUnit()
+	return cropUnitY * int(sps.FrameCropTopOffset)
+}
+
 func (sps *SPS) Width() int {
-	return int(sps.PicWidthInMbsMinus1+1)*16 - int(sps.FrameCropRightOffset)*2 - int(sps.FrameCropLeftOffset)*2
+	cropUnitX, _ := sps.cropUnit()
+	picWidthInMbs := int(sps.PicWidthInMbsMinus1) + 1
+	picWidthSamplesL := picWidthInMbs * 16
+	return picWidthSamplesL - cropUnitX*int(sps.FrameCropRightOffset) - sps.X()
 }
 
 func (sps *SPS) Height() int {
-	i := 0
+	frameMbsOnlyFlag := 0
 	if sps.FrameMbsOnlyFlag {
-		i = 1
+		frameMbsOnlyFlag = 1
 	}
-	return int(2-i)*int(sps.PicHeightInMapUnitsMinus1+1)*16 - int(sps.FrameCropBottomOffset)*2 - int(sps.FrameCropTopOffset)*2
+	_, cropUnitY := sps.cropUnit()
+	picHeightInMapUnits := sps.PicHeightInMapUnitsMinus1 + 1
+	picHeightInMbs := (2 - frameMbsOnlyFlag) * int(picHeightInMapUnits)
+	picHeightInSamplesL := picHeightInMbs * 16
+	return picHeightInSamplesL - cropUnitY*int(sps.FrameCropBottomOffset) - sps.Y()
 }
 
 func ParseSPS(reader *utils.BitReader) SPS {

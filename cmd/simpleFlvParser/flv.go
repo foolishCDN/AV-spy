@@ -7,6 +7,7 @@ import (
 
 	"github.com/foolishCDN/AV-spy/codec"
 	"github.com/foolishCDN/AV-spy/codec/avc"
+	"github.com/foolishCDN/AV-spy/codec/hevc"
 	"github.com/foolishCDN/AV-spy/container/flv"
 	"github.com/foolishCDN/AV-spy/encoding/amf"
 	"github.com/foolishCDN/AV-spy/formatter"
@@ -138,13 +139,17 @@ func (p *FlvParser) OnHEVC(t *flv.VideoTag) error {
 	if !(showExtraData || showAll) {
 		return nil
 	}
-	hevc := new(codec.HEVCDecoderConfigurationRecord)
-	if err := hevc.Read(t.Bytes); err != nil {
+	decoderConfigurationRecord := new(hevc.HEVCDecoderConfigurationRecord)
+	if err := decoderConfigurationRecord.Read(t.Bytes); err != nil {
 		return err
 	}
 	fmt.Println("-- sequence header of video --")
-	pretty.Println(hevc)
-	fmt.Println("------------------------------")
+	pretty.Println(decoderConfigurationRecord)
+	// sps := hevc.ParseSPS(utils.NewBitReader(decoderConfigurationRecord.N[0]))
+	// fmt.Println("-- From SPS --")
+	// fmt.Printf("width x height: %dx%d\n", sps.Width(), sps.Height())
+	// fmt.Printf("fps: %.2f (It's not mandatory)\n", sps.FPS())
+	// fmt.Println("------------------------------")
 	return nil
 }
 
