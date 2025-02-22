@@ -8,6 +8,7 @@ import (
 	"github.com/awesome-gocui/gocui"
 	"github.com/fatih/color"
 	"github.com/foolishCDN/AV-spy/codec"
+	"github.com/foolishCDN/AV-spy/codec/avc"
 	"github.com/foolishCDN/AV-spy/container/flv"
 	"github.com/foolishCDN/AV-spy/encoding/amf"
 )
@@ -40,15 +41,15 @@ func onAAC(g *gocui.Gui, t *flv.AudioTag, w io.Writer) {
 }
 
 func onAVC(g *gocui.Gui, t *flv.VideoTag, w io.Writer) {
-	avc := new(codec.AVCDecoderConfigurationRecord)
-	if err := avc.Read(t.Bytes); err != nil {
+	decoderConfigurationRecord := new(avc.AVCDecoderConfigurationRecord)
+	if err := decoderConfigurationRecord.Read(t.Bytes); err != nil {
 		showError(g, "Parse avc fail, err %v\n", err)
 		return
 	}
 	if w != nil {
 		submitEvent(func(gui *gocui.Gui) error {
 			_, _ = fmt.Fprintf(w, color.RedString("AVC Decoder Configuration Record:\n"))
-			prettyPrintTo(w, avc)
+			prettyPrintTo(w, decoderConfigurationRecord)
 			_, _ = fmt.Fprintf(w, "\n")
 			return nil
 		})
