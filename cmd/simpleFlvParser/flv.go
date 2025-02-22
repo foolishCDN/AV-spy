@@ -11,6 +11,7 @@ import (
 	"github.com/foolishCDN/AV-spy/container/flv"
 	"github.com/foolishCDN/AV-spy/encoding/amf"
 	"github.com/foolishCDN/AV-spy/formatter"
+	"github.com/foolishCDN/AV-spy/summary"
 	"github.com/foolishCDN/AV-spy/utils"
 	"github.com/sikasjc/pretty"
 	"github.com/sirupsen/logrus"
@@ -29,6 +30,9 @@ type FlvParser struct {
 	videoFormatter  formatter.Formatter
 	audioFormatter  formatter.Formatter
 	scriptFormatter formatter.Formatter
+
+	videoCounter summary.Counter
+	audioCounter summary.Counter
 }
 
 func (p *FlvParser) Println(tag flv.TagI) {
@@ -43,6 +47,24 @@ func (p *FlvParser) Println(tag flv.TagI) {
 		fmt.Println(p.videoFormatter.Format(t.ToVars()))
 	case *flv.ScriptTag:
 		fmt.Println(p.scriptFormatter.Format(t.ToVars()))
+	}
+}
+
+func (p *FlvParser) Summary() {
+	v := p.videoCounter
+	a := p.audioCounter
+	fmt.Println("\nSummary:")
+	fmt.Printf("video: %d/%d/%v, fps: %.2f, real fps: %0.2f, gap: %d, rewind: %d, duplicate: %d\n",
+		v.Total, v.TimestampDuration(), v.Duration(), v.Rate(), v.RealRate(), v.MaxGap, v.MaxRewind, v.Duplicate)
+	fmt.Printf("audio: %d/%d/%v, pps: %.2f, real pps: %0.2f, gap: %d, rewind: %d, duplicate: %d\n",
+		a.Total, a.TimestampDuration(), a.Duration(), a.Rate(), a.RealRate(), a.MaxGap, a.MaxRewind, a.Duplicate)
+
+	cacheTimestampDuration := min(v.CacheTimestampDuration(), a.CacheTimestampDuration())
+	cacheDuration := min(v.CacheDuration(), a.CacheDuration())
+	if cacheTimestampDuration == 0 {
+		fmt.Printf("cache: %d(not yet over) was send within %v\n", v.TimestampDuration(), v.Duration())
+	} else {
+		fmt.Printf("cache: %d was send within %v\n", cacheTimestampDuration, cacheDuration)
 	}
 }
 
@@ -65,6 +87,8 @@ func (p *FlvParser) OnPacket(tag flv.TagI) error {
 			if err := p.OnAAC(t); err != nil {
 				logrus.WithField("error", err).Error("parse sequence header of audio AACAudioSpecificConfig failed")
 			}
+		} else {
+			p.audioCounter.Count(int(t.PTS))
 		}
 	case *flv.VideoTag:
 		if t.PacketType == flv.SequenceHeader {
@@ -80,6 +104,8 @@ func (p *FlvParser) OnPacket(tag flv.TagI) error {
 			default:
 				logrus.WithField("codec_id", t.CodecID).Warn("unknown sequence header type of video")
 			}
+		} else {
+			p.videoCounter.Count(int(t.DTS))
 		}
 	case *flv.ScriptTag:
 		decoder := amf.NewDecoder(amf.Version0)

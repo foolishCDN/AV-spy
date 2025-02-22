@@ -14,16 +14,19 @@ AV-spy -i <url>
 SimpleFlvParser is a simple tool to parse FLV stream
 
 ```
+SimpleFlvParser is a simple tool to parse FLV stream
+
 Usage:
   simpleFlvParser ...[flags] <file path of http url> ...[flags]
 
 Flags:
+      --diff_threshold int   when the diff between the real fps(using time) and the fps(using timestamp) is less than this threshold(percent), it is considered that all cache have been received (default 5)
   -f, --format string        output format (default "normal")
   -H, --header strings       http request header
   -h, --help                 help for simpleFlvParser
   -k, --insecure_tls         insecure TLS connection
   -L, --location             follow 302
-  -n, --number n             show n packets (default 20)
+  -n, --number n             show n packets (no limit if n<=0)
       --server_name string   server name for TLS handshake
       --show                 will show all message
       --show_extradata       will show codec extradata(sequence header)
@@ -106,6 +109,11 @@ fps: NaN (It's not mandatory)
  AUDIO       0     104     104     418 MP3 Stereo 16bit 44KHz
  VIDEO       0     148     107    2903 InterFrame H264
  AUDIO       0     131     131     418 MP3 Stereo 16bit 44KHz
+
+Summary:
+video: 3/82/512.1µs, fps: 36.59, real fps: 5858.23, gap: 41, rewind: 0, duplicate: 0
+audio: 6/131/512.1µs, pps: 45.80, real pps: 11716.46, gap: 27, rewind: 0, duplicate: 0
+cache: 82(not yet over) was send within 512.1µs
 ```
 ## Install
 ```
@@ -113,7 +121,7 @@ go install github.com/foolishCDN/AV-spy/cmd/AV-spy@latest
 ```
 or 
 ```
-go install github.com/foolishCDN/AV-spy/cmd/SimpleFlvParser@latest
+go install github.com/foolishCDN/AV-spy/cmd/simpleFlvParser@latest
 ```
 
 
