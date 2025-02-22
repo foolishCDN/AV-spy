@@ -1,6 +1,7 @@
 package summary
 
 import (
+	"math"
 	"time"
 )
 
@@ -17,10 +18,11 @@ type Counter struct {
 	// for computing the cache content of live stream in server
 	realTimeStart          time.Time
 	realTimeCount          int
-	realTimeFps            int
+	estimatedCacheFps      float64
 	cacheTimestampDuration int
 	cacheDuration          time.Duration
-	DiffThreshold          int
+
+	DiffThreshold int
 }
 
 func (c *Counter) TimestampDuration() int {
@@ -29,6 +31,10 @@ func (c *Counter) TimestampDuration() int {
 
 func (c *Counter) Duration() time.Duration {
 	return time.Since(c.startTime)
+}
+
+func (c *Counter) EstimatedCacheFps() float64 {
+	return c.estimatedCacheFps
 }
 
 func (c *Counter) Rate() float64 {
@@ -62,14 +68,16 @@ func (c *Counter) Count(timestamp int) {
 
 	// compute real time fps
 	if c.cacheTimestampDuration == 0 {
-		if time.Since(c.realTimeStart) >= time.Second {
-			c.realTimeFps = c.realTimeCount / int(time.Since(c.realTimeStart))
-			if (float64(c.realTimeFps)-c.Rate())/c.Rate()*100 < float64(c.DiffThreshold) {
+		c.realTimeCount++
+		if time.Since(c.realTimeStart) >= time.Millisecond*100 {
+			c.estimatedCacheFps = float64(c.realTimeCount) / time.Since(c.realTimeStart).Seconds()
+			if math.Abs(float64(c.estimatedCacheFps)-c.Rate())/c.Rate()*100 < float64(c.DiffThreshold) {
 				// dry of server cache
 				c.cacheTimestampDuration = c.TimestampDuration()
 				c.cacheDuration = c.Duration()
 			}
 			c.realTimeStart = time.Now()
+			c.realTimeCount = 0
 		}
 	}
 

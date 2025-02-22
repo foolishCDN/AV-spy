@@ -54,18 +54,34 @@ func (p *FlvParser) Summary() {
 	v := p.videoCounter
 	a := p.audioCounter
 	fmt.Println("\nSummary:")
-	fmt.Printf("video: %d/%d/%v, fps: %.2f, real fps: %0.2f, gap: %d, rewind: %d, duplicate: %d\n",
-		v.Total, v.TimestampDuration(), v.Duration(), v.Rate(), v.RealRate(), v.MaxGap, v.MaxRewind, v.Duplicate)
-	fmt.Printf("audio: %d/%d/%v, pps: %.2f, real pps: %0.2f, gap: %d, rewind: %d, duplicate: %d\n",
-		a.Total, a.TimestampDuration(), a.Duration(), a.Rate(), a.RealRate(), a.MaxGap, a.MaxRewind, a.Duplicate)
-
-	cacheTimestampDuration := min(v.CacheTimestampDuration(), a.CacheTimestampDuration())
-	cacheDuration := min(v.CacheDuration(), a.CacheDuration())
-	if cacheTimestampDuration == 0 {
-		fmt.Printf("cache: %d(not yet over) was send within %v\n", v.TimestampDuration(), v.Duration())
-	} else {
-		fmt.Printf("cache: %d was send within %v\n", cacheTimestampDuration, cacheDuration)
+	fmt.Printf("  Running time: %v\n", v.Duration())
+	if v.Total > 0 {
+		fmt.Println("  video:")
+		fmt.Printf("    count/timestamp: %d/%d, fps: %.2f, real fps: %0.2f, gap: %d, rewind: %d, duplicate: %d\n",
+			v.Total, v.TimestampDuration(), v.Rate(), v.RealRate(), v.MaxGap, v.MaxRewind, v.Duplicate)
+		cacheTimestampDuration := v.CacheTimestampDuration()
+		cacheDuration := v.CacheDuration()
+		estimatedCacheFps := v.EstimatedCacheFps()
+		if cacheTimestampDuration == 0 {
+			fmt.Printf("    Estimated cache: %d(not yet over) was send within %v\n", v.TimestampDuration(), v.Duration())
+		} else {
+			fmt.Printf("    Estimated cache: %d was send within %v, estimated fps: %0.2f\n", cacheTimestampDuration, cacheDuration, estimatedCacheFps)
+		}
 	}
+	if a.Total > 0 {
+		fmt.Println("  audio:")
+		fmt.Printf("    count/timestamp: %d/%d, pps: %.2f, real pps: %0.2f, gap: %d, rewind: %d, duplicate: %d\n",
+			a.Total, a.TimestampDuration(), a.Rate(), a.RealRate(), a.MaxGap, a.MaxRewind, a.Duplicate)
+		cacheTimestampDuration := a.CacheTimestampDuration()
+		cacheDuration := a.CacheDuration()
+		estimatedCacheFps := a.EstimatedCacheFps()
+		if cacheTimestampDuration == 0 {
+			fmt.Printf("    Estimated cache: %d(not yet over) was send within %v\n", a.TimestampDuration(), a.Duration())
+		} else {
+			fmt.Printf("    Estimated cache: %d was send within %v, estimated fps: %0.2f\n", cacheTimestampDuration, cacheDuration, estimatedCacheFps)
+		}
+	}
+
 }
 
 func (p *FlvParser) OnHeader(header *flv.Header) {
