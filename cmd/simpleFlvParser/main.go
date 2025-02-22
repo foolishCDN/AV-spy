@@ -4,16 +4,19 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
 	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/textproto"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
+
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 
 	"github.com/foolishCDN/AV-spy/container/flv"
 )
@@ -28,7 +31,7 @@ var (
 
 	DefaultFormat           = "normal"
 	DefaultTimeout          = 10
-	DefaultShowPacketNumber = 20
+	DefaultShowPacketNumber = 0 // no limit
 )
 
 var (
@@ -49,6 +52,9 @@ var (
 	follow302  bool
 	insecure   bool
 	serverName string
+
+	// compute cache options
+	diffThreshold int
 )
 
 func initFlags() {
@@ -89,7 +95,7 @@ func initFlags() {
 		"number",
 		"n",
 		DefaultShowPacketNumber,
-		"show `n` packets",
+		"show `n` packets (no limit if n<=0)",
 	)
 	rootCmd.PersistentFlags().StringVarP(
 		&format,
@@ -131,6 +137,12 @@ func initFlags() {
 		"",
 		"server name for TLS handshake",
 	)
+	rootCmd.PersistentFlags().IntVar(
+		&diffThreshold,
+		"diff_threshold",
+		5,
+		"when the diff between the real fps(using time) and the fps(using timestamp) is less than this threshold(percent), it is considered that all cache have been received",
+	)
 }
 
 func main() {
@@ -160,14 +172,26 @@ func main() {
 		if err != nil {
 			return err
 		}
+		p.videoCounter.DiffThreshold = diffThreshold
+		p.audioCounter.DiffThreshold = diffThreshold
 
 		demuxer := new(flv.Demuxer)
 		header, err := demuxer.ReadHeader(r)
 		if err != nil {
 			return err
 		}
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-c
+			p.Summary()
+			os.Exit(1)
+		}()
 		p.OnHeader(header)
 		count := 0
+		defer func() {
+			p.Summary()
+		}()
 		for {
 			tag, err := demuxer.ReadTag(r)
 			if err != nil {
