@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
 
@@ -33,6 +34,8 @@ type FlvParser struct {
 
 	videoCounter summary.Counter
 	audioCounter summary.Counter
+	sps          codec.SPS
+	codec        string
 }
 
 func (p *FlvParser) Println(tag flv.TagI) {
@@ -57,6 +60,15 @@ func (p *FlvParser) Summary() {
 	fmt.Printf("  Running time: %v\n", v.Duration())
 	if v.Total > 0 {
 		fmt.Println("  video:")
+		if p.sps != nil {
+			if p.sps.FPS() > 0 {
+				fmt.Printf("    resolution: %dx%d, codec: %s, fps: %.2f (from sps)\n",
+					p.sps.Width(), p.sps.Height(), p.codec, p.sps.FPS())
+			} else {
+				fmt.Printf("    resolution: %dx%d, codec: %s\n",
+					p.sps.Width(), p.sps.Height(), p.codec)
+			}
+		}
 		fmt.Printf("    count/timestamp: %d/%d, fps: %.2f, real fps: %0.2f, gap: %d, rewind: %d, duplicate: %d\n",
 			v.Total, v.TimestampDuration(), v.Rate(), v.RealRate(), v.MaxGap, v.MaxRewind, v.Duplicate)
 		cacheTimestampDuration := v.CacheTimestampDuration()
@@ -110,10 +122,12 @@ func (p *FlvParser) OnPacket(tag flv.TagI) error {
 		if t.PacketType == flv.SequenceHeader {
 			switch t.CodecID {
 			case flv.H264:
+				p.codec = "avc"
 				if err := p.OnAVC(t); err != nil {
 					logrus.WithField("error", err).Error("parse sequence header of video AVCDecoderConfigurationRecord failed")
 				}
 			case flv.H265:
+				p.codec = "hevc"
 				if err := p.OnHEVC(t); err != nil {
 					logrus.WithField("error", err).Error("parse sequence header of video HEVCDecoderConfigurationRecord failed")
 				}
@@ -169,9 +183,13 @@ func (p *FlvParser) OnAVC(t *flv.VideoTag) error {
 	}
 	fmt.Println("-- sequence header of video --")
 	pretty.Println(decoderConfigurationRecord)
-	sps := avc.ParseSPS(utils.NewBitReader(decoderConfigurationRecord.SPS[0]))
+	sps, err := avc.ParseSPS(utils.NewBitReader(decoderConfigurationRecord.SPS[0]))
+	if err != nil {
+		logrus.Errorf("parse sps failed, the hex string of decoderConfigurationRecord is %s", hex.EncodeToString(t.Bytes))
+	}
+	p.sps = sps
 	fmt.Println("-- From SPS --")
-	fmt.Printf("width x height: %dx%d\n", sps.Width(), sps.Height())
+	fmt.Printf("resolution: %dx%d\n", sps.Width(), sps.Height())
 	fmt.Printf("fps: %.2f (It's not mandatory)\n", sps.FPS())
 	fmt.Println("------------------------------")
 	return nil
@@ -187,11 +205,20 @@ func (p *FlvParser) OnHEVC(t *flv.VideoTag) error {
 	}
 	fmt.Println("-- sequence header of video --")
 	pretty.Println(decoderConfigurationRecord)
-	// sps := hevc.ParseSPS(utils.NewBitReader(decoderConfigurationRecord.N[0]))
-	// fmt.Println("-- From SPS --")
-	// fmt.Printf("width x height: %dx%d\n", sps.Width(), sps.Height())
-	// fmt.Printf("fps: %.2f (It's not mandatory)\n", sps.FPS())
-	// fmt.Println("------------------------------")
+	for _, ps := range decoderConfigurationRecord.NALUs {
+		if ps.NALUnitType != hevc.NalSPS {
+			continue
+		}
+		sps, err := hevc.ParseSPS(utils.NewBitReader(ps.NALUs[0]))
+		if err != nil {
+			logrus.Errorf("parse sps failed, the hex string of decoderConfigurationRecord is %s", hex.EncodeToString(t.Bytes))
+		}
+		p.sps = sps
+		fmt.Println("-- From SPS --")
+		fmt.Printf("resolution: %dx%d\n", sps.Width(), sps.Height())
+		fmt.Printf("fps: %.2f (It's not mandatory)\n", sps.FPS())
+		fmt.Println("------------------------------")
+	}
 	return nil
 }
 

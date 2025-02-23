@@ -72,7 +72,7 @@ func (c *Counter) Count(timestamp int) {
 		if time.Since(c.realTimeStart) >= time.Millisecond*100 {
 			c.estimatedCacheFps = float64(c.realTimeCount) / time.Since(c.realTimeStart).Seconds()
 			if math.Abs(float64(c.estimatedCacheFps)-c.Rate())/c.Rate()*100 < float64(c.DiffThreshold) {
-				// dry of server cache
+				// it is considered that all the server cache has been consumed
 				c.cacheTimestampDuration = c.TimestampDuration()
 				c.cacheDuration = c.Duration()
 			}
