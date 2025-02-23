@@ -50,11 +50,11 @@ type VUI struct {
 }
 
 func (vui *VUI) FPS() float64 {
-	return float64(vui.TimeScale) / float64(vui.NumUnitsInTick) / 2.0
+	return float64(vui.TimeScale) / float64(vui.NumUnitsInTick)
 }
 
-func ParseVUI(reader *utils.BitReader) VUI {
-	vui := VUI{}
+func ParseVUI(reader *utils.BitReader) *VUI {
+	vui := new(VUI)
 	vui.AspectRatioInfoPresentFlag = reader.ReadFlag()
 	if vui.AspectRatioInfoPresentFlag {
 		vui.AspectRatioIdc = reader.ReadBitsUint8(8)

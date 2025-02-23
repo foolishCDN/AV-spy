@@ -1,7 +1,12 @@
 package avc
 
 import (
+	"encoding/hex"
+	"errors"
+
 	"github.com/foolishCDN/AV-spy/utils"
+	"github.com/sikasjc/pretty"
+	"github.com/sirupsen/logrus"
 )
 
 // SPS Sequence parameter sets
@@ -47,7 +52,7 @@ type SPS struct {
 	FrameCropBottomOffset uint // ue(v)
 
 	VUIParametersPresentFlag bool // u(1)
-	VUI                      VUI
+	VUI                      *VUI
 }
 
 func (sps *SPS) cropUnit() (int, int) {
@@ -74,6 +79,9 @@ func (sps *SPS) cropUnit() (int, int) {
 }
 
 func (sps *SPS) FPS() float64 {
+	if sps.VUI == nil {
+		return 0
+	}
 	return sps.VUI.FPS()
 }
 
@@ -112,8 +120,8 @@ func (sps *SPS) Height() int {
 	return picHeightInSamplesL - cropUnitY*int(sps.FrameCropBottomOffset) - sps.Y()
 }
 
-func ParseSPS(reader *utils.BitReader) SPS {
-	sps := SPS{}
+func ParseSPS(reader *utils.BitReader) (*SPS, error) {
+	sps := new(SPS)
 
 	sps.ProfileIdc = reader.ReadBitsUint8(8)
 	sps.ConstraintSetFlag = reader.ReadBitsUint8(8)
@@ -185,7 +193,14 @@ func ParseSPS(reader *utils.BitReader) SPS {
 	if sps.VUIParametersPresentFlag {
 		sps.VUI = ParseVUI(reader)
 	}
-	return sps
+	if reader.Error() {
+		logrus.Infof("parse sps failed, the hex string of sps is %s, and use -v to see what got sps is",
+			hex.EncodeToString(reader.OriginData()))
+		if logrus.GetLevel() == logrus.DebugLevel {
+			pretty.Println(sps)
+		}
+	}
+	return sps, errors.New("invalid data")
 }
 
 func ScalingList(reader *utils.BitReader, scalingList []byte, useDefaultScalingMatrixFlag *bool) {

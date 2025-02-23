@@ -12,18 +12,31 @@ type BitReader struct {
 	offsetBytes int
 }
 
+func (reader *BitReader) OriginData() []byte {
+	return reader.data
+}
+
 func (reader *BitReader) move() {
 	if reader.offsetBits++; reader.offsetBits >= 8 {
 		reader.offsetBits = 0
 		reader.offsetBytes++
+
+		if reader.offsetBytes < len(reader.data) {
+			// 0x00 0x00 0x03 0xXX -> skip 0x03
+			if reader.offsetBytes >= 2 {
+				if BigEndianUint24(reader.data[reader.offsetBytes-2:reader.offsetBytes+1]) == 0x03 {
+					reader.offsetBytes++
+				}
+			}
+		}
 	}
 }
-func (reader *BitReader) error() bool {
+func (reader *BitReader) Error() bool {
 	return reader.offsetBytes*8+int(reader.offsetBits) >= len(reader.data)*8
 }
 
 func (reader *BitReader) PeekBit() byte {
-	if reader.error() {
+	if reader.Error() {
 		return 0
 	}
 	return (reader.data[reader.offsetBytes] >> (7 - reader.offsetBits)) & 0x01
@@ -60,6 +73,10 @@ func (reader *BitReader) ReadBitsUint32(n int) uint32 {
 	return uint32(reader.ReadBits(n))
 }
 
+func (reader *BitReader) ReadBitsUint64(n int) uint64 {
+	return uint64(reader.ReadBits(n))
+}
+
 // ReadUE read an exponential-Golomb code to uint
 func (reader *BitReader) ReadUE() uint {
 	leadingZeroBits := 0
@@ -67,7 +84,7 @@ func (reader *BitReader) ReadUE() uint {
 	// read the leadingZeroBits, note we already read the first 0b1
 	for {
 		b := reader.ReadBit()
-		if reader.error() {
+		if reader.Error() {
 			return 0
 		}
 		if !(b == 0 && leadingZeroBits < 32) {
@@ -80,7 +97,7 @@ func (reader *BitReader) ReadUE() uint {
 	}
 	// read the lastBits
 	v := reader.ReadBits(leadingZeroBits)
-	if reader.error() {
+	if reader.Error() {
 		return 0
 	}
 	// 1 << leadingZeroBits (for the first 0b1) + lastBits - 1
