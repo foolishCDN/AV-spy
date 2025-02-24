@@ -50,7 +50,7 @@ type VUI struct {
 }
 
 func (vui *VUI) FPS() float64 {
-	return float64(vui.TimeScale) / float64(vui.NumUnitsInTick)
+	return float64(vui.TimeScale) / float64(vui.NumUnitsInTick) / 2.0
 }
 
 func ParseVUI(reader *utils.BitReader) *VUI {

@@ -183,9 +183,11 @@ func (p *FlvParser) OnAVC(t *flv.VideoTag) error {
 	}
 	fmt.Println("-- sequence header of video --")
 	pretty.Println(decoderConfigurationRecord)
-	sps, err := avc.ParseSPS(utils.NewBitReader(decoderConfigurationRecord.SPS[0]))
+	reader := utils.NewBitReader(decoderConfigurationRecord.SPS[0])
+	avc.ParseNALUHeader(reader)
+	sps, err := avc.ParseSPS(reader)
 	if err != nil {
-		logrus.Errorf("parse sps failed, the hex string of decoderConfigurationRecord is %s", hex.EncodeToString(t.Bytes))
+		logrus.Debugf("parse sps failed, the hex string of decoderConfigurationRecord is %s", hex.EncodeToString(t.Bytes))
 	}
 	p.sps = sps
 	fmt.Println("-- From SPS --")
@@ -209,9 +211,11 @@ func (p *FlvParser) OnHEVC(t *flv.VideoTag) error {
 		if ps.NALUnitType != hevc.NalSPS {
 			continue
 		}
-		sps, err := hevc.ParseSPS(utils.NewBitReader(ps.NALUs[0]))
+		reader := utils.NewBitReader(ps.NALUs[0])
+		hevc.ParseNALUHeader(reader)
+		sps, err := hevc.ParseSPS(reader)
 		if err != nil {
-			logrus.Errorf("parse sps failed, the hex string of decoderConfigurationRecord is %s", hex.EncodeToString(t.Bytes))
+			logrus.Debugf("parse sps failed, the hex string of decoderConfigurationRecord is %s", hex.EncodeToString(t.Bytes))
 		}
 		p.sps = sps
 		fmt.Println("-- From SPS --")

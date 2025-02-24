@@ -273,6 +273,7 @@ func ParseSPS(reader *utils.BitReader) (*SPS, error) {
 		if logrus.GetLevel() == logrus.DebugLevel {
 			pretty.Println(sps)
 		}
+		return sps, errors.New("invalid data")
 	}
-	return sps, errors.New("parse sps failed")
+	return sps, nil
 }
