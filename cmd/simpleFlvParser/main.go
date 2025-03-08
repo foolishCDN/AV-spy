@@ -32,6 +32,10 @@ var (
 	DefaultFormat           = "normal"
 	DefaultTimeout          = 10
 	DefaultShowPacketNumber = 0 // no limit
+
+	seiFormatByte   = "byte"
+	seiFormatString = "string"
+	seiFormatHex    = "hex"
 )
 
 var (
@@ -43,6 +47,8 @@ var (
 	showMetaData  bool
 	showPacket    bool
 	showExtraData bool
+	showSEI       bool
+	seiFormat     string // default: hex
 	num           int
 	format        string
 
@@ -89,6 +95,18 @@ func initFlags() {
 		"show_extradata",
 		false,
 		"will show codec extradata(sequence header)",
+	)
+	rootCmd.PersistentFlags().BoolVar(
+		&showSEI,
+		"show_sei",
+		false,
+		"will show SEI(Supplemental Enhancement Information)",
+	)
+	rootCmd.PersistentFlags().StringVar(
+		&seiFormat,
+		"sei_format",
+		seiFormatHex,
+		"how to show SEI",
 	)
 	rootCmd.PersistentFlags().IntVarP(
 		&num,

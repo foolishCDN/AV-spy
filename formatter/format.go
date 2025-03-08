@@ -10,10 +10,6 @@ type ElementName string
 
 var definedElements []ElementName
 
-var DefaultVideoTemplate Template
-var DefaultAudioTemplate Template
-var DefaultScriptTemplate Template
-
 func init() {
 	definedElements = []ElementName{
 		ElementStreamType,
@@ -21,6 +17,7 @@ func init() {
 		ElementDTS,
 		ElementPTS,
 		ElementSize,
+		ElementNALUTypes,
 
 		ElementAudioSoundFormant,
 		ElementAudioChannels,
@@ -41,6 +38,7 @@ const (
 	ElementPTS        ElementName = "pts"
 	ElementDTS        ElementName = "dts"
 	ElementSize       ElementName = "size"
+	ElementNALUTypes  ElementName = "nalu_types"
 
 	ElementAudioSoundFormant ElementName = "sound_format"
 	ElementAudioChannels     ElementName = "channels"

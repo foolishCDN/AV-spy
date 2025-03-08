@@ -268,7 +268,7 @@ func ParseSPS(reader *utils.BitReader) (*SPS, error) {
 	sps.VUI = ParseVUI(reader, sps)
 
 	if reader.Error() {
-		logrus.Infof("parse sps failed, the hex string of sps is %s, and use -v to see what got sps is",
+		logrus.Debugf("parse sps failed, the hex string of sps is %s",
 			hex.EncodeToString(reader.OriginData()))
 		if logrus.GetLevel() == logrus.DebugLevel {
 			pretty.Println(sps)
