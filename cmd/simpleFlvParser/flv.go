@@ -18,7 +18,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var defaultVideoTemplate = formatter.NewTemplate("$stream_type:%6s $stream_id:%7d $pts:%7d $dts:%7d $size:%7d $frame_type $codec_id")
+var defaultVideoTemplate = formatter.NewTemplate("$stream_type:%6s $stream_id:%7d $pts:%7d $dts:%7d $size:%7d $frame_type $codec_id $nalu_types")
 var defaultAudioTemplate = formatter.NewTemplate("$stream_type:%6s $stream_id:%7d $pts:%7d $dts:%7d $size:%7d $sound_format $channels $sound_size $sample_rate")
 var defaultScriptTemplate = formatter.NewTemplate("$stream_type:%6s $stream_id:%7d $pts:%7d $dts:%7d $size:%7d")
 
@@ -47,6 +47,22 @@ func (p *FlvParser) Println(tag flv.TagI) {
 	case *flv.AudioTag:
 		fmt.Println(p.audioFormatter.Format(t.ToVars()))
 	case *flv.VideoTag:
+		payloadType, payloadSize, payload := t.SEI()
+		if len(payload) > 0 && (showAll || showSEI) {
+			fmt.Println("------------- SEI ------------")
+			pretty.Println(fmt.Sprint("payload type: ", payloadType))
+			pretty.Println(fmt.Sprint("payload size: ", payloadSize))
+			switch seiFormat {
+			case seiFormatHex:
+				pretty.Println(payload)
+			case seiFormatByte:
+				pretty.DefaultPrinter.CompactArray = true
+				pretty.Println(payload)
+			case seiFormatString:
+				pretty.Println(string(payload))
+			}
+			fmt.Println("------------------------------")
+		}
 		fmt.Println(p.videoFormatter.Format(t.ToVars()))
 	case *flv.ScriptTag:
 		fmt.Println(p.scriptFormatter.Format(t.ToVars()))
@@ -181,6 +197,8 @@ func (p *FlvParser) OnAVC(t *flv.VideoTag) error {
 	if err := decoderConfigurationRecord.Read(t.Bytes); err != nil {
 		return err
 	}
+	t.NALUs = append(t.NALUs, decoderConfigurationRecord.SPS...)
+	t.NALUs = append(t.NALUs, decoderConfigurationRecord.PPS...)
 	fmt.Println("-- sequence header of video --")
 	pretty.Println(decoderConfigurationRecord)
 	reader := utils.NewBitReader(decoderConfigurationRecord.SPS[0])
@@ -208,6 +226,7 @@ func (p *FlvParser) OnHEVC(t *flv.VideoTag) error {
 	fmt.Println("-- sequence header of video --")
 	pretty.Println(decoderConfigurationRecord)
 	for _, ps := range decoderConfigurationRecord.NALUs {
+		t.NALUs = append(t.NALUs, ps.NALUs...)
 		if ps.NALUnitType != hevc.NalSPS {
 			continue
 		}

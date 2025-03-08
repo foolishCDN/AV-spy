@@ -12,6 +12,10 @@ type BitReader struct {
 	offsetBytes int
 }
 
+func (reader *BitReader) LastData() []byte {
+	return reader.data[reader.offsetBytes:]
+}
+
 func (reader *BitReader) OriginData() []byte {
 	return reader.data
 }
@@ -63,6 +67,17 @@ func (reader *BitReader) ReadBits(n int) uint64 {
 
 func (reader *BitReader) ReadBitsUint8(n int) uint8 {
 	return uint8(reader.ReadBits(n))
+}
+
+func (reader *BitReader) Read8BitsUntilNot0xFF() int {
+	var res int
+	got := reader.ReadBitsUint8(8)
+	for got == 0xFF {
+		res += 255
+		got = reader.ReadBitsUint8(8)
+	}
+	res += int(got)
+	return res
 }
 
 func (reader *BitReader) ReadBitsUint16(n int) uint16 {
