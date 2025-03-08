@@ -2,3 +2,4 @@
 .vscode
 container/flv/test_copy.flv
 encoding/riff/test_copy.wav
+simpleFlvParser*
