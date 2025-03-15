@@ -100,7 +100,7 @@ func initFlags() {
 		&showSEI,
 		"show_sei",
 		false,
-		"will show SEI(Supplemental Enhancement Information)",
+		"will show SEI(Supplemental Enhancement Information) and the packet info that carryed SEI",
 	)
 	rootCmd.PersistentFlags().StringVar(
 		&seiFormat,
@@ -169,9 +169,16 @@ func main() {
 		if verbose {
 			logrus.SetLevel(logrus.DebugLevel)
 		}
-		if !(showPacket || showHeader || showExtraData || showMetaData || showAll) {
+		if !(showPacket || showHeader || showExtraData || showMetaData || showAll || showSEI) {
 			cmd.Usage()
 			return errors.New("please set one or more flags to show")
+		}
+		if showAll {
+			showPacket = true
+			showHeader = true
+			showExtraData = true
+			showMetaData = true
+			showSEI = true
 		}
 		if len(args) < 1 {
 			cmd.Usage()

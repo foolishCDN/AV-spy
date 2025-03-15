@@ -45,27 +45,36 @@ func (p *FlvParser) Println(tag flv.TagI) {
 	}
 	switch t := tag.(type) {
 	case *flv.AudioTag:
-		fmt.Println(p.audioFormatter.Format(t.ToVars()))
+		if showPacket {
+			fmt.Println(p.audioFormatter.Format(t.ToVars()))
+		}
 	case *flv.VideoTag:
 		payloadType, payloadSize, payload := t.SEI()
-		if len(payload) > 0 && (showAll || showSEI) {
-			fmt.Println("------------- SEI ------------")
-			pretty.Println(fmt.Sprint("payload type: ", payloadType))
-			pretty.Println(fmt.Sprint("payload size: ", payloadSize))
-			switch seiFormat {
-			case seiFormatHex:
-				pretty.Println(payload)
-			case seiFormatByte:
-				pretty.DefaultPrinter.CompactArray = true
-				pretty.Println(payload)
-			case seiFormatString:
-				pretty.Println(string(payload))
+		if showSEI {
+			if payloadType != 0 {
+				fmt.Println("------------- SEI ------------")
+				pretty.Println(fmt.Sprint("payload type: ", payloadType))
+				pretty.Println(fmt.Sprint("payload size: ", payloadSize))
+				switch seiFormat {
+				case seiFormatHex:
+					pretty.Println(payload)
+				case seiFormatByte:
+					pretty.DefaultPrinter.CompactArray = true
+					pretty.Println(payload)
+				case seiFormatString:
+					pretty.Println(string(payload))
+				}
+				fmt.Println("------------------------------")
+				fmt.Println(p.videoFormatter.Format(t.ToVars()))
 			}
-			fmt.Println("------------------------------")
 		}
-		fmt.Println(p.videoFormatter.Format(t.ToVars()))
+		if showPacket {
+			fmt.Println(p.videoFormatter.Format(t.ToVars()))
+		}
 	case *flv.ScriptTag:
-		fmt.Println(p.scriptFormatter.Format(t.ToVars()))
+		if showPacket {
+			fmt.Println(p.scriptFormatter.Format(t.ToVars()))
+		}
 	}
 }
 
@@ -113,7 +122,7 @@ func (p *FlvParser) Summary() {
 }
 
 func (p *FlvParser) OnHeader(header *flv.Header) {
-	if !(showHeader || showAll) {
+	if !(showHeader) {
 		return
 	}
 	fmt.Println("---------- FLV Header ----------")
@@ -162,13 +171,13 @@ func (p *FlvParser) OnPacket(tag flv.TagI) error {
 				logrus.WithField("error", err).Error("parse script tag failed")
 			}
 		}
-		if showMetaData || showAll {
+		if showMetaData {
 			fmt.Println("---------- MetaData ----------")
 			pretty.Println(got)
 			fmt.Println("------------------------------")
 		}
 	}
-	if !(showPacket || showAll) {
+	if !(showPacket || showSEI) {
 		return nil
 	}
 	p.Println(tag)
@@ -176,7 +185,7 @@ func (p *FlvParser) OnPacket(tag flv.TagI) error {
 }
 
 func (p *FlvParser) OnAAC(t *flv.AudioTag) error {
-	if !(showExtraData || showAll) {
+	if !(showExtraData) {
 		return nil
 	}
 	aac := new(codec.AACAudioSpecificConfig)
@@ -190,7 +199,7 @@ func (p *FlvParser) OnAAC(t *flv.AudioTag) error {
 }
 
 func (p *FlvParser) OnAVC(t *flv.VideoTag) error {
-	if !(showExtraData || showAll) {
+	if !(showExtraData) {
 		return nil
 	}
 	decoderConfigurationRecord := new(avc.AVCDecoderConfigurationRecord)
@@ -216,7 +225,7 @@ func (p *FlvParser) OnAVC(t *flv.VideoTag) error {
 }
 
 func (p *FlvParser) OnHEVC(t *flv.VideoTag) error {
-	if !(showExtraData || showAll) {
+	if !(showExtraData) {
 		return nil
 	}
 	decoderConfigurationRecord := new(hevc.HEVCDecoderConfigurationRecord)
