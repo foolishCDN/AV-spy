@@ -32,8 +32,8 @@ type FlvParser struct {
 	audioFormatter  formatter.Formatter
 	scriptFormatter formatter.Formatter
 
-	videoCounter summary.Counter
-	audioCounter summary.Counter
+	videoCounter *summary.Counter
+	audioCounter *summary.Counter
 	sps          codec.SPS
 	codec        string
 }
@@ -94,8 +94,8 @@ func (p *FlvParser) Summary() {
 					p.sps.Width(), p.sps.Height(), p.codec)
 			}
 		}
-		fmt.Printf("    count/timestamp: %d/%d, fps: %.2f, real fps: %0.2f, gap: %d, rewind: %d, duplicate: %d\n",
-			v.Total, v.TimestampDuration(), v.Rate(), v.RealRate(), v.MaxGap, v.MaxRewind, v.Duplicate)
+		fmt.Printf("    count/timestamp: %d/%d, fps: %.2f, real fps: %0.2f, gap: %d, rewind: %d, duplicate: %d, hole: %dms\n",
+			v.Total, v.TimestampDuration(), v.Rate(), v.RealRate(), v.MaxGap, v.MaxRewind, v.Duplicate, v.MaxHole.Milliseconds())
 		cacheTimestampDuration := v.CacheTimestampDuration()
 		cacheDuration := v.CacheDuration()
 		estimatedCacheFps := v.EstimatedCacheFps()
@@ -107,8 +107,8 @@ func (p *FlvParser) Summary() {
 	}
 	if a.Total > 0 {
 		fmt.Println("  audio:")
-		fmt.Printf("    count/timestamp: %d/%d, pps: %.2f, real pps: %0.2f, gap: %d, rewind: %d, duplicate: %d\n",
-			a.Total, a.TimestampDuration(), a.Rate(), a.RealRate(), a.MaxGap, a.MaxRewind, a.Duplicate)
+		fmt.Printf("    count/timestamp: %d/%d, pps: %.2f, real pps: %0.2f, gap: %d, rewind: %d, duplicate: %d, hole: %dms\n",
+			a.Total, a.TimestampDuration(), a.Rate(), a.RealRate(), a.MaxGap, a.MaxRewind, a.Duplicate, a.MaxHole.Milliseconds())
 		cacheTimestampDuration := a.CacheTimestampDuration()
 		cacheDuration := a.CacheDuration()
 		estimatedCacheFps := a.EstimatedCacheFps()
@@ -255,7 +255,10 @@ func (p *FlvParser) OnHEVC(t *flv.VideoTag) error {
 }
 
 func NewFlvParser(format string) (*FlvParser, error) {
-	p := &FlvParser{}
+	p := &FlvParser{
+		videoCounter: summary.NewCounter(summary.SetLogPrefix("video")),
+		audioCounter: summary.NewCounter(summary.SetLogPrefix("audio")),
+	}
 	switch format {
 	case DefaultFormat:
 		p.videoFormatter = defaultVideoTemplate
