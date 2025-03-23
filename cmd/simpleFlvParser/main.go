@@ -60,7 +60,9 @@ var (
 	serverName string
 
 	// compute cache options
-	diffThreshold int
+	diffThreshold     int
+	hintGapThreshold  int
+	hintHoleThreshold int
 )
 
 func initFlags() {
@@ -157,9 +159,21 @@ func initFlags() {
 	)
 	rootCmd.PersistentFlags().IntVar(
 		&diffThreshold,
-		"diff_threshold",
+		"diff",
 		5,
 		"when the diff between the real fps(using time) and the fps(using timestamp) is less than this threshold(percent), it is considered that all cache have been received",
+	)
+	rootCmd.PersistentFlags().IntVar(
+		&hintGapThreshold,
+		"hint_gap",
+		200,
+		"hint when the gap of dts is larger than threshold",
+	)
+	rootCmd.PersistentFlags().IntVar(
+		&hintHoleThreshold,
+		"hint_hole",
+		200,
+		"hint when the hole of data is larger than threshold",
 	)
 }
 
@@ -198,7 +212,11 @@ func main() {
 			return err
 		}
 		p.videoCounter.DiffThreshold = diffThreshold
+		p.videoCounter.HintGap = hintGapThreshold
+		p.videoCounter.HintHole = time.Duration(hintHoleThreshold) * time.Millisecond
 		p.audioCounter.DiffThreshold = diffThreshold
+		p.audioCounter.HintGap = hintGapThreshold
+		p.audioCounter.HintHole = time.Duration(hintHoleThreshold) * time.Millisecond
 
 		demuxer := new(flv.Demuxer)
 		header, err := demuxer.ReadHeader(r)
