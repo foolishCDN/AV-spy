@@ -1,9 +1,11 @@
 **Note: Now only support FLV**
 
+This repo provides two command tool (**AV-spy** and **simpleFlvParser**) for analyzing media data.
+
 ## Usage
 
 ### AV-spy
-AV-Spy -- a simple interactive tool to analysis Media data
+AV-spy -- a simple interactive tool to analysis Media data
 ![screencast](asset/screencast.gif)
 You can input the http-flv url in Terminal UI, or
 ```
